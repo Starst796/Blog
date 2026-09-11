@@ -1,0 +1,24 @@
+# 站点信息 —— 主页 hero 区域与顶部导航直接读取本文件。
+# 可在管理后台 /admin/site 可视化编辑；注意保存时本文件会被整体重写，
+# 因此手写的注释不会保留，需要长期保留的说明请写在这里。
+#
+# 图片建议在后台点「上传」，会自动填入形如 /uploads/2026/09/avatar.png 的地址；
+# 也接受 2026/09/avatar.png 这样的相对路径，或 http(s) 外链。
+
+name: 我的站点
+tagline: 记录与分享
+bio: 这里是一句话简介，用来说明你是谁、这个站点写些什么。
+location: 中国 · 上海
+email: hi@example.com
+avatar: ""
+
+# 社交链接：主页 hero 区域按顺序渲染为小圆角标签
+social:
+  - { label: GitHub, url: "https://github.com/yourname" }
+  - { label: 邮箱, url: "mailto:hi@example.com" }
+
+# 顶部导航；url 可以是站内路径，也可以是完整外链
+nav:
+  - { label: 主页, url: / }
+  - { label: 项目, url: /projects }
+  - { label: 文章, url: /articles }

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block meta %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/admin.js', v=asset_version) }}" defer></script>
+{% endblock %}
+
+{% block content %}
+  <div class="container admin">
+    <nav class="admin-bar" aria-label="后台导航">
+      <span class="admin-badge">管理后台</span>
+      <div class="admin-links">
+        <a href="{{ url_for('admin.dashboard') }}"
+           {% if request.endpoint == 'admin.dashboard' %}class="is-active"{% endif %}>内容</a>
+        <a href="{{ url_for('admin.article_new') }}"
+           {% if request.endpoint == 'admin.article_new' %}class="is-active"{% endif %}>写文章</a>
+        <a href="{{ url_for('admin.project_new') }}"
+           {% if request.endpoint == 'admin.project_new' %}class="is-active"{% endif %}>新建项目</a>
+        <a href="{{ url_for('admin.site_edit') }}"
+           {% if request.endpoint == 'admin.site_edit' %}class="is-active"{% endif %}>站点信息</a>
+        <a href="{{ url_for('index') }}" target="_blank" rel="noopener">查看站点 ↗</a>
+        <form class="inline-form" method="post"
+              action="{{ url_for('admin.toggle_preview_mode') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="/">
+          <button class="link-button" type="submit">
+            {{ '关闭预览模式' if preview_mode else '预览草稿与敏感内容' }}
+          </button>
+        </form>
+        <form class="inline-form" method="post" action="{{ url_for('admin.logout') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="link-button" type="submit">退出</button>
+        </form>
+      </div>
+    </nav>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul class="flash-list">
+          {% for category, message in messages %}
+            <li class="flash {{ 'flash-ok' if category == 'ok' else 'flash-error' }}">{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    {% block admin_content %}{% endblock %}
+  </div>
+{% endblock %}

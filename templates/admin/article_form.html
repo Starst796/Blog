@@ -1,0 +1,108 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ '编辑文章' if article else '写新文章' }} · {{ site.name }}{% endblock %}
+
+{% block admin_content %}
+  {% set draft_checked = (form.get('draft') == 'on') if 'draft' in form else (article.draft if article else true) %}
+  {% set sensitive_checked = (form.get('sensitive') == 'on') if 'sensitive' in form else (article.sensitive if article else false) %}
+
+  <h1 class="page-title">{{ '编辑文章' if article else '写新文章' }}</h1>
+
+  {% if article and article.sensitive %}
+    <p class="flash flash-error">
+      本文标记了 <code>sensitive: true</code>：任何情况下都不会对外输出——即使取消勾选草稿也不会发布。
+      适用于存放密钥、凭据一类内容。
+    </p>
+  {% endif %}
+
+  <form class="admin-form" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="form-grid">
+      <label class="field field-wide">
+        <span class="field-label">标题</span>
+        <input class="input" type="text" name="title" required
+               value="{{ form.get('title') if 'title' in form else (article.title if article else '') }}">
+      </label>
+
+      <label class="field">
+        <span class="field-label">slug <span class="field-hint">小写字母、数字、连字符</span></span>
+        <input class="input" type="text" name="slug" pattern="[a-z0-9][a-z0-9-]*"
+               value="{{ form.get('slug') if 'slug' in form else (article.slug if article else default_slug) }}">
+      </label>
+
+      <label class="field">
+        <span class="field-label">日期</span>
+        <input class="input" type="date" name="date"
+               value="{{ form.get('date') if 'date' in form else today }}">
+      </label>
+
+      <label class="field field-wide">
+        <span class="field-label">摘要 <span class="field-hint">留空则自动截取正文首段</span></span>
+        <input class="input" type="text" name="summary"
+               value="{{ form.get('summary') if 'summary' in form else (article.summary if article else '') }}">
+      </label>
+
+      <label class="field">
+        <span class="field-label">标签 <span class="field-hint">逗号分隔</span></span>
+        <input class="input" type="text" name="tags"
+               value="{{ form.get('tags') if 'tags' in form else (article.tags | join(', ') if article else '') }}">
+      </label>
+
+      <div class="field">
+        <label class="field-label" for="article-cover">封面图</label>
+        <div class="field-row">
+          <input class="input" type="text" id="article-cover" name="cover" data-path-input
+                 placeholder="/uploads/2026/09/cover.png"
+                 value="{{ form.get('cover') if 'cover' in form else (article.cover or '' if article else '') }}">
+          <label class="button button-small button-ghost upload-button">
+            上传
+            <input type="file" hidden data-upload-path
+                   accept="image/png,image/jpeg,image/gif,image/webp,image/avif">
+          </label>
+          <img class="field-preview" data-path-preview alt=""
+               src="{{ article.cover or '' if article else '' }}"
+               {%- if not (article and article.cover) %} hidden{% endif %}>
+        </div>
+        <span class="field-hint" data-upload-status></span>
+      </div>
+
+      <label class="field field-inline field-wide">
+        <input type="checkbox" name="draft" value="on"{% if draft_checked %} checked{% endif %}>
+        <span>保存为草稿（草稿不会出现在站点与订阅源中）</span>
+      </label>
+
+      <label class="field field-inline field-wide field-sensitive">
+        <input type="checkbox" name="sensitive" value="on"{% if sensitive_checked %} checked{% endif %}>
+        <span>
+          <strong>标记为敏感</strong>（含密钥、凭据等）
+          <span class="field-hint">
+            比草稿更强：即使取消勾选草稿，它也永远不会出现在站点、sitemap 或订阅源中，仅后台可见。
+            若确实需要连 git 一起排除，还要把文件名加进 <code>~/blog/content/.gitignore</code>。
+          </span>
+        </span>
+      </label>
+    </div>
+
+    {% with body_value = form.get('body') if 'body' in form else (article.body if article else '') %}
+      {% include "admin/_editor.html" %}
+    {% endwith %}
+
+    <div class="form-actions">
+      <button class="button button-primary" type="submit">保存</button>
+      <a class="button button-ghost" href="{{ url_for('admin.dashboard') }}">返回列表</a>
+      {% if article %}
+        <a class="button button-ghost" href="{{ article.url }}" target="_blank" rel="noopener">在站点查看 ↗</a>
+      {% endif %}
+    </div>
+  </form>
+
+  {% if article %}
+    <form class="inline-form danger-zone" method="post"
+          action="{{ url_for('admin.article_delete', slug=article.slug) }}"
+          data-confirm="确定删除文章「{{ article.title }}」？此操作不可撤销。">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="button button-danger" type="submit">删除这篇文章</button>
+    </form>
+  {% endif %}
+{% endblock %}

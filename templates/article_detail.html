@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+
+{% block title %}{{ article.title }} · {{ site.name }}{% endblock %}
+{% block description %}{{ article.summary or article.title }}{% endblock %}
+
+{% block meta %}
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="{{ article.title }}">
+  <meta property="og:description" content="{{ article.summary }}">
+  <meta property="og:url" content="{{ site_url }}{{ article.url }}">
+  <meta property="article:published_time" content="{{ article.date.isoformat() }}">
+  {% if article.cover %}<meta property="og:image" content="{{ site_url }}{{ article.cover }}">{% endif %}
+{% endblock %}
+
+{% block content %}
+  <div class="container page">
+    <article class="post">
+      <header class="post-head">
+        <p class="post-breadcrumb"><a href="{{ url_for('articles') }}">← 返回文章列表</a></p>
+        <h1 class="post-title">{{ article.title }}</h1>
+        <p class="post-meta">
+          <time datetime="{{ article.date.isoformat() }}">{{ article.date.isoformat() }}</time>
+          {% if article.updated and article.updated != article.date %}
+            <span class="post-updated">修订于 {{ article.updated.isoformat() }}</span>
+          {% endif %}
+          <span>{{ article.words }} 字符</span>
+          {% if article.sensitive %}<span class="badge badge-sensitive">不公开</span>
+          {%- elif article.draft %}<span class="badge badge-draft">草稿</span>{% endif %}
+        </p>
+
+        {% if article.sensitive or article.draft %}
+          <p class="post-visibility">
+            {% if article.sensitive %}
+              这篇标记为<strong>敏感</strong>，任何人（包括搜索引擎）都看不到，
+              只有你在预览模式下才能打开。
+            {% else %}
+              这篇仍是<strong>草稿</strong>，仅在预览模式下可见。
+            {% endif %}
+          </p>
+        {% endif %}
+        {% if article.tags %}
+          <p class="post-tags">
+            {% for tag in article.tags %}
+              <a class="tag" href="{{ url_for('articles', tag=tag) }}">#{{ tag }}</a>
+            {% endfor %}
+          </p>
+        {% endif %}
+      </header>
+
+      {% if article.cover %}
+        <img class="post-cover" src="{{ article.cover }}" alt="" loading="lazy">
+      {% endif %}
+
+      {% if article.toc %}
+        <details class="post-toc" open>
+          <summary>目录</summary>
+          {{ article.toc | safe }}
+        </details>
+      {% endif %}
+
+      <div class="prose">
+        {{ article.html | safe }}
+      </div>
+    </article>
+
+    {% if older_article or newer_article %}
+      <nav class="post-nav" aria-label="相邻文章">
+        {% if older_article %}
+          <a class="post-nav-item" href="{{ older_article.url }}">
+            <span class="post-nav-label">← 更早</span>
+            <span class="post-nav-title">{{ older_article.title }}</span>
+          </a>
+        {% endif %}
+        {% if newer_article %}
+          <a class="post-nav-item is-next" href="{{ newer_article.url }}">
+            <span class="post-nav-label">更新 →</span>
+            <span class="post-nav-title">{{ newer_article.title }}</span>
+          </a>
+        {% endif %}
+      </nav>
+    {% endif %}
+  </div>
+{% endblock %}

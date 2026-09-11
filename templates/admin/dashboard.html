@@ -1,0 +1,92 @@
+{% extends "admin/base.html" %}
+
+{% block title %}内容管理 · {{ site.name }}{% endblock %}
+
+{% block admin_content %}
+  <section class="admin-stats">
+    <div class="stat"><span class="stat-value">{{ stats.articles }}</span><span class="stat-label">文章</span></div>
+    <div class="stat"><span class="stat-value">{{ stats.drafts }}</span><span class="stat-label">草稿</span></div>
+    {% if stats.sensitive %}
+      <div class="stat"><span class="stat-value">{{ stats.sensitive }}</span><span class="stat-label">敏感（不输出）</span></div>
+    {% endif %}
+    <div class="stat"><span class="stat-value">{{ stats.projects }}</span><span class="stat-label">项目</span></div>
+    <div class="stat"><span class="stat-value">{{ stats.tags }}</span><span class="stat-label">标签</span></div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <h2 class="section-title">文章</h2>
+      <a class="button button-small" href="{{ url_for('admin.article_new') }}">写新文章</a>
+    </div>
+
+    {% if articles %}
+      <table class="table">
+        <thead>
+          <tr><th>标题</th><th>日期</th><th>状态</th><th class="col-actions">操作</th></tr>
+        </thead>
+        <tbody>
+          {% for article in articles %}
+            <tr>
+              <td>
+                <a href="{{ article.url }}" target="_blank" rel="noopener">{{ article.title }}</a>
+                <span class="muted">/{{ article.slug }}</span>
+              </td>
+              <td class="nowrap">{{ article.date.isoformat() }}</td>
+              <td>{% if article.sensitive %}<span class="badge badge-sensitive">敏感 · 不输出</span>{% elif article.draft %}<span class="badge badge-draft">草稿</span>{% else %}<span class="badge">已发布</span>{% endif %}</td>
+              <td class="col-actions">
+                <a class="link-more" href="{{ url_for('admin.article_edit', slug=article.slug) }}">编辑</a>
+                <form class="inline-form" method="post"
+                      action="{{ url_for('admin.article_delete', slug=article.slug) }}"
+                      data-confirm="确定删除文章「{{ article.title }}」？此操作不可撤销。">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="link-button link-danger" type="submit">删除</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-state">还没有文章，点击「写新文章」开始。</p>
+    {% endif %}
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <h2 class="section-title">项目</h2>
+      <a class="button button-small" href="{{ url_for('admin.project_new') }}">新建项目</a>
+    </div>
+
+    {% if projects %}
+      <table class="table">
+        <thead>
+          <tr><th>名称</th><th>状态</th><th>排序</th><th>主页</th><th class="col-actions">操作</th></tr>
+        </thead>
+        <tbody>
+          {% for project in projects %}
+            <tr>
+              <td>
+                <a href="{{ project.url }}" target="_blank" rel="noopener">{{ project.title }}</a>
+                <span class="muted">/{{ project.slug }}</span>
+              </td>
+              <td class="nowrap">{{ project.status }}</td>
+              <td class="nowrap">{{ project.order }}</td>
+              <td>{% if project.featured %}<span class="badge">展示</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+              <td class="col-actions">
+                <a class="link-more" href="{{ url_for('admin.project_edit', slug=project.slug) }}">编辑</a>
+                <form class="inline-form" method="post"
+                      action="{{ url_for('admin.project_delete', slug=project.slug) }}"
+                      data-confirm="确定删除项目「{{ project.title }}」？此操作不可撤销。">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="link-button link-danger" type="submit">删除</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-state">还没有项目。</p>
+    {% endif %}
+  </section>
+{% endblock %}

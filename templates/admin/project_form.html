@@ -1,0 +1,95 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ '编辑项目' if project else '新建项目' }} · {{ site.name }}{% endblock %}
+
+{% block admin_content %}
+  {% set featured_checked = (form.get('featured') == 'on') if 'featured' in form else (project.featured if project else false) %}
+  {% set links_value = form.get('links') if 'links' in form else (project.links_text if project else '') %}
+
+  <h1 class="page-title">{{ '编辑项目' if project else '新建项目' }}</h1>
+
+  <form class="admin-form" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="form-grid">
+      <label class="field field-wide">
+        <span class="field-label">项目名称</span>
+        <input class="input" type="text" name="title" required
+               value="{{ form.get('title') if 'title' in form else (project.title if project else '') }}">
+      </label>
+
+      <label class="field">
+        <span class="field-label">slug <span class="field-hint">小写字母、数字、连字符</span></span>
+        <input class="input" type="text" name="slug" pattern="[a-z0-9][a-z0-9-]*"
+               value="{{ form.get('slug') if 'slug' in form else (project.slug if project else default_slug) }}">
+      </label>
+
+      <label class="field">
+        <span class="field-label">状态</span>
+        <input class="input" type="text" name="status" list="status-options"
+               value="{{ form.get('status') if 'status' in form else (project.status if project else '进行中') }}">
+        <datalist id="status-options">
+          <option value="进行中"></option>
+          <option value="已完成"></option>
+          <option value="已归档"></option>
+        </datalist>
+      </label>
+
+      <label class="field">
+        <span class="field-label">时间跨度</span>
+        <input class="input" type="text" name="period" placeholder="2026-03 ~ 至今"
+               value="{{ form.get('period') if 'period' in form else (project.period or '' if project else '') }}">
+      </label>
+
+      <label class="field">
+        <span class="field-label">排序 <span class="field-hint">数字越小越靠前</span></span>
+        <input class="input" type="number" name="order"
+               value="{{ form.get('order') if 'order' in form else (project.order if project else 100) }}">
+      </label>
+
+      <label class="field field-wide">
+        <span class="field-label">一句话简介</span>
+        <input class="input" type="text" name="summary"
+               value="{{ form.get('summary') if 'summary' in form else (project.summary if project else '') }}">
+      </label>
+
+      <label class="field field-wide">
+        <span class="field-label">技术栈 <span class="field-hint">逗号分隔</span></span>
+        <input class="input" type="text" name="stack"
+               value="{{ form.get('stack') if 'stack' in form else (project.stack | join(', ') if project else '') }}">
+      </label>
+
+      <label class="field field-wide">
+        <span class="field-label">相关链接 <span class="field-hint">每行一条：名称 https://…</span></span>
+        <textarea class="input" name="links" rows="3"
+                  placeholder="访问站点 https://example.com">{{ links_value }}</textarea>
+      </label>
+
+      <label class="field field-inline field-wide">
+        <input type="checkbox" name="featured" value="on"{% if featured_checked %} checked{% endif %}>
+        <span>在主页「近期项目」中优先展示</span>
+      </label>
+    </div>
+
+    {% with body_value = form.get('body') if 'body' in form else (project.body if project else '') %}
+      {% include "admin/_editor.html" %}
+    {% endwith %}
+
+    <div class="form-actions">
+      <button class="button button-primary" type="submit">保存</button>
+      <a class="button button-ghost" href="{{ url_for('admin.dashboard') }}">返回列表</a>
+      {% if project %}
+        <a class="button button-ghost" href="{{ project.url }}" target="_blank" rel="noopener">在站点查看 ↗</a>
+      {% endif %}
+    </div>
+  </form>
+
+  {% if project %}
+    <form class="inline-form danger-zone" method="post"
+          action="{{ url_for('admin.project_delete', slug=project.slug) }}"
+          data-confirm="确定删除项目「{{ project.title }}」？此操作不可撤销。">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="button button-danger" type="submit">删除这个项目</button>
+    </form>
+  {% endif %}
+{% endblock %}

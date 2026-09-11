@@ -1,0 +1,73 @@
+{% extends "admin/base.html" %}
+
+{% block title %}站点信息 · {{ site.name }}{% endblock %}
+
+{% block admin_content %}
+  <h1 class="page-title">站点信息</h1>
+  <p class="page-sub">这些内容会直接显示在主页顶部的个人简介区域。</p>
+
+  <form class="admin-form" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="form-grid">
+      <label class="field">
+        <span class="field-label">名字 / 昵称</span>
+        <input class="input" type="text" name="name" required
+               value="{{ form.get('name') if 'name' in form else site.name }}">
+      </label>
+
+      <label class="field">
+        <span class="field-label">所在位置 <span class="field-hint">可留空</span></span>
+        <input class="input" type="text" name="location"
+               value="{{ form.get('location') if 'location' in form else site.location }}">
+      </label>
+
+      <label class="field field-wide">
+        <span class="field-label">一句话定位 <span class="field-hint">显示在名字下方</span></span>
+        <input class="input" type="text" name="tagline"
+               value="{{ form.get('tagline') if 'tagline' in form else site.tagline }}">
+      </label>
+
+      <label class="field field-wide">
+        <span class="field-label">自我介绍 <span class="field-hint">两三句为宜</span></span>
+        <textarea class="input" name="bio" rows="4">{{ form.get('bio') if 'bio' in form else site.bio }}</textarea>
+      </label>
+
+      <label class="field">
+        <span class="field-label">公开邮箱 <span class="field-hint">可留空</span></span>
+        <input class="input" type="email" name="email"
+               value="{{ form.get('email') if 'email' in form else site.email }}">
+      </label>
+
+      <div class="field field-wide">
+        <label class="field-label" for="site-avatar">头像</label>
+        <div class="field-row">
+          <input class="input" type="text" id="site-avatar" name="avatar" data-path-input
+                 placeholder="/uploads/2026/09/avatar.png 或 https://…"
+                 value="{{ form.get('avatar') if 'avatar' in form else (site.avatar or '') }}">
+          <label class="button button-small button-ghost upload-button">
+            上传
+            <input type="file" hidden data-upload-path
+                   accept="image/png,image/jpeg,image/gif,image/webp,image/avif">
+          </label>
+          <img class="field-preview" data-path-preview alt=""
+               src="{{ site.avatar or '' }}"{% if not site.avatar %} hidden{% endif %}>
+        </div>
+        <span class="field-hint" data-upload-status></span>
+      </div>
+
+      <label class="field field-wide">
+        <span class="field-label">社交链接 <span class="field-hint">每行一条：名称 https://…</span></span>
+        <textarea class="input" name="social" rows="4"
+                  placeholder="GitHub https://github.com/yourname">{{ social_text }}</textarea>
+      </label>
+    </div>
+
+    <div class="form-actions">
+      <button class="button button-primary" type="submit">保存</button>
+      <a class="button button-ghost" href="{{ url_for('index') }}" target="_blank" rel="noopener">查看主页 ↗</a>
+    </div>
+
+    <p class="form-note">顶部导航（主页 / 项目 / 文章）由 <code>content/site.yml</code> 的 <code>nav</code> 字段控制。</p>
+  </form>
+{% endblock %}

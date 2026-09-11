@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}管理员登录 · {{ site.name }}{% endblock %}
+{% block description %}管理后台登录{% endblock %}
+{% block meta %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+
+{% block content %}
+  <div class="container narrow">
+    <form class="card auth-card" method="post" autocomplete="on">
+      <h1 class="auth-title">管理员登录</h1>
+      <p class="auth-sub">仅站点所有者可访问</p>
+
+      {% if not password_configured %}
+        <p class="flash flash-error">
+          尚未设置管理密码。请在服务器上执行<br>
+          <code>venv/bin/python manage.py set-password</code>
+        </p>
+      {% endif %}
+
+      {% if error %}
+        <p class="flash flash-error">{{ error }}</p>
+      {% endif %}
+
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <label class="field">
+        <span class="field-label">账号</span>
+        <input class="input" type="text" name="username" value="{{ admin_username }}"
+               autocomplete="username" required autofocus>
+      </label>
+
+      <label class="field">
+        <span class="field-label">密码</span>
+        <input class="input" type="password" name="password" autocomplete="current-password" required>
+      </label>
+
+      <button class="button button-primary button-block" type="submit">登录</button>
+    </form>
+  </div>
+{% endblock %}

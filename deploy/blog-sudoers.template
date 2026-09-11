@@ -1,0 +1,8 @@
+# 授予 __APP_USER__ 用户免密重启本服务的能力，使 post-receive 钩子
+# 能在部署完成后自动重启应用。
+#
+# 由 deploy/install.sh 从本模板渲染并安装到 /etc/sudoers.d/__SERVICE_NAME__。
+# 手工安装时：
+#   sudo install -m 0440 deploy/blog-sudoers /etc/sudoers.d/__SERVICE_NAME__
+#   sudo visudo -c
+__APP_USER__ ALL=(root) NOPASSWD: /bin/systemctl restart __SERVICE_NAME__.service, /bin/systemctl status __SERVICE_NAME__.service

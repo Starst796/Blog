@@ -1,0 +1,21 @@
+{# 共用 Markdown 编辑器：正文输入 + 图片上传 + 实时预览。需在 include 前用 with 传入 body_value。 #}
+<div class="editor" data-editor>
+  <div class="editor-toolbar">
+    <span class="editor-hint">正文支持 Markdown</span>
+    <label class="button button-small button-ghost upload-button">
+      插入图片
+      <input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/avif"
+             hidden data-upload-input>
+    </label>
+    <button class="button button-small button-ghost" type="button"
+            data-toggle-preview aria-pressed="true">隐藏预览</button>
+    <span class="editor-status" data-editor-status aria-live="polite"></span>
+  </div>
+
+  <div class="editor-panes">
+    <textarea class="input editor-input" name="body" rows="20" spellcheck="false"
+              data-editor-input placeholder="在这里写正文…">{{ body_value }}</textarea>
+
+    <div class="editor-preview prose" data-editor-preview aria-live="polite"></div>
+  </div>
+</div>

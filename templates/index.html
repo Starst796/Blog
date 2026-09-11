@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+
+{% block title %}{{ site.name }}{% if site.tagline %} · {{ site.tagline }}{% endif %}{% endblock %}
+{% block description %}{{ site.bio or site.tagline or site.name }}{% endblock %}
+
+{% block content %}
+  <section class="hero">
+    <div class="container hero-inner">
+      {% if site.avatar %}
+        <img class="hero-avatar" src="{{ site.avatar }}" alt="" width="96" height="96" loading="eager">
+      {% endif %}
+
+      <div class="hero-text">
+        <h1 class="hero-name">{{ site.name }}</h1>
+
+        {% if site.tagline %}
+          <p class="hero-tagline">{{ site.tagline }}</p>
+        {% endif %}
+
+        {% if site.bio %}
+          <p class="hero-bio">{{ site.bio }}</p>
+        {% endif %}
+
+        {% if site.location or site.email or site.social %}
+          <div class="hero-links">
+            {% if site.location %}
+              <span class="hero-chip">{{ site.location }}</span>
+            {% endif %}
+            {% if site.email %}
+              <a class="hero-chip hero-chip-link" href="mailto:{{ site.email }}">{{ site.email }}</a>
+            {% endif %}
+            {% for item in site.social %}
+              {% set external = item.url.startswith('http') %}
+              <a class="hero-chip hero-chip-link" href="{{ item.url }}"
+                 {%- if external %} target="_blank" rel="noopener noreferrer"{% endif %}>{{ item.label }}</a>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <div class="container">
+    <section class="section" aria-labelledby="section-projects">
+      <div class="section-head">
+        <h2 class="section-title" id="section-projects">近期项目</h2>
+        {% if project_total %}
+          <a class="section-more" href="{{ url_for('projects') }}">全部 {{ project_total }} 个 →</a>
+        {% endif %}
+      </div>
+
+      {% if projects %}
+        <div class="project-grid">
+          {% for project in projects %}{{ m.project_card(project) }}{% endfor %}
+        </div>
+      {% else %}
+        {{ m.empty_state('还没有项目，登录后台即可添加。') }}
+      {% endif %}
+    </section>
+
+    <section class="section" aria-labelledby="section-articles">
+      <div class="section-head">
+        <h2 class="section-title" id="section-articles">近期文章</h2>
+        {% if article_total %}
+          <a class="section-more" href="{{ url_for('articles') }}">全部 {{ article_total }} 篇 →</a>
+        {% endif %}
+      </div>
+
+      {% if articles %}
+        <div class="entry-list">
+          {% for article in articles %}{{ m.article_row(article) }}{% endfor %}
+        </div>
+      {% else %}
+        {{ m.empty_state('还没有文章，登录后台即可发布。') }}
+      {% endif %}
+    </section>
+  </div>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}服务器错误 · {{ site.name }}{% endblock %}
+{% block description %}服务器暂时无法处理该请求。{% endblock %}
+
+{% block content %}
+  <div class="container page">
+    <div class="error-page">
+      <p class="error-code">500</p>
+      <h1 class="error-title">服务出了一点问题</h1>
+      <p class="error-text">错误已记录到服务日志。稍后重试，或先返回主页。</p>
+      <p class="error-actions">
+        <a class="button" href="{{ url_for('index') }}">返回主页</a>
+      </p>
+    </div>
+  </div>
+{% endblock %}

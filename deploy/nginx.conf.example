@@ -1,0 +1,48 @@
+# ============================================================================
+# nginx 反向代理示例（把 example.com 换成你的域名）
+#
+# 安装：sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/blog
+#       sudo ln -s /etc/nginx/sites-available/blog /etc/nginx/sites-enabled/blog
+#       sudo nginx -t && sudo systemctl reload nginx
+#
+# 应用本身只监听 127.0.0.1:8080，不直接对公网暴露；TLS 证书请用 certbot 等
+# 工具签发，签发后 nginx 会自动补上 ssl_certificate 相关配置。
+# ============================================================================
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name example.com www.example.com;
+
+    # 上传图片的最大体积，需与 config.py 的 MAX_CONTENT_LENGTH 保持一致
+    client_max_body_size 10m;
+
+    # 静态资源由 nginx 直接返回，不经过 Python
+    location /static/ {
+        alias /srv/blog/program/static/;
+        expires 30d;
+        access_log off;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # 上传的图片存在内容目录中，同样交由 nginx 直接返回
+    location /uploads/ {
+        alias /srv/blog/content/uploads/;
+        expires 30d;
+        access_log off;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+
+        # 应用通过 X-Forwarded-For 记录登录来源 IP，用于失败限流
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_read_timeout 30s;
+        proxy_redirect off;
+    }
+}

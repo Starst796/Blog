@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+
+{% block title %}
+  {%- if active_tag %}#{{ active_tag }} · 文章{% else %}文章{% endif %} · {{ site.name }}
+{% endblock %}
+{% block description %}共 {{ total }} 篇文章{% if active_tag %}，标签「{{ active_tag }}」{% endif %}。{% endblock %}
+
+{% block content %}
+  <div class="container page">
+    <header class="page-head">
+      <h1 class="page-title">
+        {% if active_tag %}
+          标签：{{ active_tag }}
+        {% else %}
+          文章
+        {% endif %}
+      </h1>
+      <p class="page-sub">
+        共 {{ total }} 篇{% if active_tag %} · <a href="{{ url_for('articles') }}">查看全部</a>{% endif %}
+      </p>
+    </header>
+
+    {% if tags %}
+      <nav class="tag-cloud" aria-label="标签">
+        <a class="tag{% if not active_tag %} is-active{% endif %}" href="{{ url_for('articles') }}">全部</a>
+        {% for name, count in tags %}
+          <a class="tag{% if active_tag == name %} is-active{% endif %}"
+             href="{{ url_for('articles', tag=name) }}">#{{ name }}<span class="tag-count">{{ count }}</span></a>
+        {% endfor %}
+      </nav>
+    {% endif %}
+
+    {% if articles %}
+      <div class="entry-list">
+        {% for article in articles %}{{ m.article_row(article) }}{% endfor %}
+      </div>
+      {{ m.pagination(page, total_pages, 'articles', active_tag) }}
+    {% else %}
+      {{ m.empty_state('这里还没有内容。') }}
+    {% endif %}
+  </div>
+{% endblock %}

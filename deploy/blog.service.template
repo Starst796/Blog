@@ -1,0 +1,42 @@
+[Unit]
+Description=__DOMAIN__ (nginx -> __BIND_ADDR__)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__APP_USER__
+Group=__APP_USER__
+WorkingDirectory=__APP_DIR__
+
+# .env 位于部署目录，属未跟踪文件，git checkout -f 不会覆盖；
+# 前缀 - 表示文件缺失时不报错，程序会退回 config.py 中的默认值。
+EnvironmentFile=-__APP_DIR__/.env
+Environment=PYTHONUNBUFFERED=1
+
+# 单 worker + 多线程：内容层使用进程内缓存，单进程可彻底避免多 worker 缓存不一致。
+# 这是本项目的刻意取舍，请勿随意调大 --workers，否则内容更新可能出现延迟。
+ExecStart=__VENV_DIR__/bin/gunicorn \
+    --worker-class gthread \
+    --workers 1 \
+    --threads 4 \
+    --bind __BIND_ADDR__ \
+    --timeout 30 \
+    --graceful-timeout 10 \
+    --no-control-socket \
+    --access-logfile - \
+    --error-logfile - \
+    wsgi:app
+
+Restart=always
+RestartSec=3
+
+# 安全加固：进程只能写入内容目录，其余路径（含家目录）只读
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=__CONTENT_DIR__
+
+[Install]
+WantedBy=multi-user.target

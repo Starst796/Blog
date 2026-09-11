@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}页面不存在 · {{ site.name }}{% endblock %}
+{% block description %}请求的页面不存在。{% endblock %}
+
+{% block content %}
+  <div class="container page">
+    <div class="error-page">
+      <p class="error-code">404</p>
+      <h1 class="error-title">这里没有内容</h1>
+      <p class="error-text">你要找的页面可能已被移动，或者地址输入有误。</p>
+      <p class="error-actions">
+        <a class="button" href="{{ url_for('index') }}">返回主页</a>
+        <a class="button button-ghost" href="{{ url_for('articles') }}">浏览文章</a>
+      </p>
+    </div>
+  </div>
+{% endblock %}

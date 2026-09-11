@@ -1,0 +1,88 @@
+{# 可复用的展示片段，避免主页 / 列表页 / 详情页之间出现重复标记 #}
+
+{% macro empty_state(text) %}
+  <p class="empty-state">{{ text }}</p>
+{% endmacro %}
+
+
+{% macro project_card(project) %}
+  <article class="card project-card">
+    <header class="project-head">
+      <h3 class="project-title"><a href="{{ project.url }}">{{ project.title }}</a></h3>
+      <span class="badge">{{ project.status }}</span>
+    </header>
+
+    {% if project.period %}<p class="project-period">{{ project.period }}</p>{% endif %}
+    <p class="project-summary">{{ project.summary }}</p>
+
+    {% if project.stack %}
+      <ul class="chip-list">
+        {% for item in project.stack %}<li class="chip">{{ item }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+
+    <footer class="project-actions">
+      <a class="link-more" href="{{ project.url }}">查看详情</a>
+      {% for link in project.links %}
+        {% set external = link.url.startswith('http') %}
+        <a class="link-out" href="{{ link.url }}"
+           {%- if external %} target="_blank" rel="noopener noreferrer"{% endif %}>
+          {{ link.label }}
+          {%- if external %}<span aria-hidden="true">↗</span>{% endif %}
+        </a>
+      {% endfor %}
+    </footer>
+  </article>
+{% endmacro %}
+
+
+{% macro article_row(article, show_summary=true) %}
+  <article class="entry">
+    <time class="entry-date" datetime="{{ article.date.isoformat() }}">
+      <span class="entry-year">{{ article.date.year }}</span>
+      <span class="entry-md">{{ '%02d.%02d'|format(article.date.month, article.date.day) }}</span>
+    </time>
+
+    <div class="entry-main">
+      <h3 class="entry-title">
+        <a href="{{ article.url }}">{{ article.title }}</a>
+        {% if article.sensitive %}<span class="badge badge-sensitive">不公开</span>
+        {%- elif article.draft %}<span class="badge badge-draft">草稿</span>{% endif %}
+      </h3>
+
+      {% if show_summary and article.summary %}
+        <p class="entry-summary">{{ article.summary }}</p>
+      {% endif %}
+
+      <p class="entry-meta">
+        {% for tag in article.tags %}
+          <a class="tag" href="{{ url_for('articles', tag=tag) }}">#{{ tag }}</a>
+        {% endfor %}
+        <span class="entry-words">{{ article.words }} 字符</span>
+      </p>
+    </div>
+  </article>
+{% endmacro %}
+
+
+{% macro pagination(page, total_pages, endpoint, tag=None) %}
+  {% if total_pages > 1 %}
+    {% set newer_url = url_for(endpoint, page=page - 1, tag=tag) if tag else url_for(endpoint, page=page - 1) %}
+    {% set older_url = url_for(endpoint, page=page + 1, tag=tag) if tag else url_for(endpoint, page=page + 1) %}
+    <nav class="pagination" aria-label="分页">
+      {% if page > 1 %}
+        <a class="page-link" href="{{ newer_url }}">← 较新</a>
+      {% else %}
+        <span class="page-link is-disabled">← 较新</span>
+      {% endif %}
+
+      <span class="page-status">第 {{ page }} / {{ total_pages }} 页</span>
+
+      {% if page < total_pages %}
+        <a class="page-link" href="{{ older_url }}">较旧 →</a>
+      {% else %}
+        <span class="page-link is-disabled">较旧 →</span>
+      {% endif %}
+    </nav>
+  {% endif %}
+{% endmacro %}

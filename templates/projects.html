@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+
+{% block title %}项目 · {{ site.name }}{% endblock %}
+{% block description %}共 {{ total }} 个项目。{% endblock %}
+
+{% block content %}
+  <div class="container page">
+    <header class="page-head">
+      <h1 class="page-title">项目</h1>
+      <p class="page-sub">共 {{ total }} 个</p>
+    </header>
+
+    {% if projects %}
+      <div class="project-grid">
+        {% for project in projects %}{{ m.project_card(project) }}{% endfor %}
+      </div>
+    {% else %}
+      {{ m.empty_state('还没有项目。') }}
+    {% endif %}
+  </div>
+{% endblock %}

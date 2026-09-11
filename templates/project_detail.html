@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project.title }} · 项目 · {{ site.name }}{% endblock %}
+{% block description %}{{ project.summary or project.title }}{% endblock %}
+
+{% block content %}
+  <div class="container page">
+    <article class="post">
+      <header class="post-head">
+        <p class="post-breadcrumb"><a href="{{ url_for('projects') }}">← 返回项目列表</a></p>
+        <h1 class="post-title">{{ project.title }}</h1>
+        <p class="post-meta">
+          <span class="badge">{{ project.status }}</span>
+          {% if project.period %}<span>{{ project.period }}</span>{% endif %}
+        </p>
+        {% if project.stack %}
+          <ul class="chip-list">
+            {% for item in project.stack %}<li class="chip">{{ item }}</li>{% endfor %}
+          </ul>
+        {% endif %}
+        {% if project.links %}
+          <p class="post-links">
+            {% for link in project.links %}
+              {% set external = link.url.startswith('http') %}
+              <a class="button" href="{{ link.url }}"
+                 {%- if external %} target="_blank" rel="noopener noreferrer"{% endif %}>
+                {{ link.label }}{% if external %} <span aria-hidden="true">↗</span>{% endif %}
+              </a>
+            {% endfor %}
+          </p>
+        {% endif %}
+      </header>
+
+      <div class="prose">
+        {{ project.html | safe }}
+      </div>
+    </article>
+  </div>
+{% endblock %}
