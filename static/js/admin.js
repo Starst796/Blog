@@ -1,5 +1,5 @@
 /* 后台交互，两块互相独立：
-   1) Markdown 编辑器：格式工具栏、图片上传与 md 导入导出、实时预览
+   1) Markdown 编辑器：格式工具栏、图片上传与 md 导入导出、实时预览、Ctrl+S 保存
    2) 路径字段（头像 / 封面）：上传后把地址回填到输入框
    页面里只存在其中之一也能正常工作。 */
 (function () {
@@ -48,6 +48,7 @@
   var paintedHtml = null; // 上一次写入预览的 HTML，内容没变就不重绘（重绘会丢滚动位置）
   var paintToken = 0; // 每次重绘递增，用来让过期的图片回调失效
   var stashedScroll = null; // 预览被隐藏时暂存的滚动位置
+  var toolbarEditing = false; // 工具栏正在改正文，见 replaceRange
 
   /* 滚动联动（详见下方「滚动联动」小节） */
   var ruler = null;          // 隐藏标尺，用来把源码行换算成像素
@@ -467,11 +468,75 @@
     previewTimer = window.setTimeout(renderPreview, delay == null ? PREVIEW_DELAY : delay);
   }
 
+  /* 工具栏改完正文的收尾：标尺重新量一遍、预览立刻重画，不等输入停顿。
+     input 的处理函数做的是同一件事，只是预览晚一拍（见那里的说明）。 */
+  function refreshAfterEdit() {
+    syncSource = 'editor';
+    refreshLineTops();
+    schedulePreview(0);
+  }
+
+  /* ------------------------------------------------ 保存后回到原来的位置
+
+     保存走的是原生提交（必填校验、flash、跳转都归浏览器与后端管），代价是一次
+     POST → 302 → GET 的重渲染：页面滚回顶部、正文滚回开头，写了半天的位置就丢了。
+     提交前把「页面滚动 + 编辑框滚动 + 光标」记进 sessionStorage，重渲染后放回去。
+     记录只用一次：读出来就删掉，否则下次再打开这一页会莫名跳到上次的位置。 */
+
+  var RETURN_KEY = 'editor-return';
+
+  function rememberSpot() {
+    try {
+      sessionStorage.setItem(RETURN_KEY, JSON.stringify({
+        // 只在同一页面里还原：改了 slug 路径就变了，那就当没记过
+        path: location.pathname,
+        // 页面位置记「编辑框在视口里的位置」，上方多出一条 flash 提示也不受影响
+        editorTop: editor ? Math.round(editor.getBoundingClientRect().top) : 0,
+        scrollTop: Math.round(textarea.scrollTop),
+        selStart: textarea.selectionStart,
+        selEnd: textarea.selectionEnd
+      }));
+    } catch (error) {
+      /* 隐身模式等场景下 sessionStorage 会抛异常；没记住位置不影响保存 */
+    }
+  }
+
+  /* 取出并立刻删掉上次留下的位置，取不到就返回 null。 */
+  function takeSpot() {
+    try {
+      var raw = sessionStorage.getItem(RETURN_KEY);
+      sessionStorage.removeItem(RETURN_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /* 把位置放回去。正文是重新渲染的，光标位置先夹到当前长度内再用。 */
+  function restoreSpot(record) {
+    if (!record || record.path !== location.pathname) {
+      return;
+    }
+    var end = textarea.value.length;
+    // 先摆光标再滚：setSelectionRange 也会把光标带进视野，让后面写的 scrollTop 说话
+    textarea.setSelectionRange(
+      Math.min(record.selStart, end),
+      Math.min(record.selEnd, end)
+    );
+    textarea.scrollTop = record.scrollTop;
+    if (editor) {
+      window.scrollBy(0, editor.getBoundingClientRect().top - record.editorTop);
+    }
+  }
+
   if (textarea && preview) {
     // 记下预览自身的底部内边距：文末留白写的是同一个属性，算的时候得先把它扣掉
     previewPadBottom = parseFloat(window.getComputedStyle(preview).paddingBottom) || 0;
 
     textarea.addEventListener('input', function () {
+      if (toolbarEditing) {
+        return; // 这次改动来自工具栏，它自己会收尾，别重复量一遍标尺
+      }
       syncSource = 'editor'; // 在编辑框里输入，就以编辑框为基准
       refreshLineTops();
       schedulePreview();
@@ -509,9 +574,16 @@
       }).observe(textarea);
     }
 
+    // 原生提交会整页重渲染，先把编辑位置记下来（见「保存后回到原来的位置」）
+    if (textarea.form) {
+      textarea.form.addEventListener('submit', rememberSpot);
+    }
+
     // 首次进入即渲染已有正文，编辑旧文章时预览与输入框内容一致。
     refreshLineTops();
     schedulePreview(0);
+    // 上一页如果是保存后跳回来的，位置按提交前记下的还原；预览会跟着一起归位
+    restoreSpot(takeSpot());
   }
 
   if (fileInput) {
@@ -580,20 +652,41 @@
   /* 用文本替换 [start, end)，并把选区放到指定位置。工具栏的每个动作最后都走这里，
      光标、标尺、预览的刷新都集中在这一处。
 
-     顺序要紧：给 value 赋值会让浏览器把「当前光标」挪到文末，此时若先 focus()，
-     浏览器会先按这个假光标把编辑框滚到文末，后面 setSelectionRange 虽然把光标摆
-     回原处，滚动位置却不会跟着退回来——于是点一下工具栏，编辑器就整个跳到底部。
-     所以先摆好选区再 focus()，让浏览器只按真正的光标位置决定滚不滚。 */
+     替换走浏览器的原生编辑命令（execCommand + insertText），而不是直接给 value 赋值：
+     赋值会把光标挪到文末，还会清空浏览器的撤销栈，于是 Ctrl+Z 再也退不回工具栏的改动。
+     原生编辑命令是浏览器自己的编辑动作，撤销栈照旧，光标也留在我们摆好的位置上。
+     它会自己派发 input，所以下面用一个标记把 input 那边的收尾挡掉，免得标尺量两遍。
+     没有这个命令的浏览器退回直接赋值：功能不变，只是这次改动进不了撤销栈。
+
+     滚动位置由我们自己负责：原生编辑命令会把光标滚进视野（贴着文末时，文末留白刚好
+     让末行顶在视口上沿，浏览器会顺手把它再往里推一两行），而点工具栏本就不该让编辑框
+     动。前后各存还原一次，「原来贴底就继续贴底」——与预览那侧用的是同一套规则，
+     还原放在留白重算之后，钳制边界才是新的。 */
   function replaceRange(start, end, text, selStart, selEnd) {
-    textarea.value = textarea.value.slice(0, start) + text + textarea.value.slice(end);
     if (selStart == null) {
       selStart = selEnd = start + text.length;
     }
-    textarea.setSelectionRange(selStart, selEnd);
+
+    var snapshot = captureScroll(textarea);
+
     textarea.focus();
-    syncSource = 'editor';
-    refreshLineTops();
-    schedulePreview(0);
+    textarea.setSelectionRange(start, end);
+
+    var edited = false;
+    toolbarEditing = true;
+    try {
+      edited = document.execCommand('insertText', false, text);
+    } catch (error) {
+      edited = false;
+    }
+    toolbarEditing = false;
+
+    if (!edited) {
+      textarea.value = textarea.value.slice(0, start) + text + textarea.value.slice(end);
+    }
+    textarea.setSelectionRange(selStart, selEnd);
+    refreshAfterEdit();
+    restoreScroll(textarea, snapshot);
   }
 
   /* 当前选区的整行范围：光标在哪一行就取哪一行，选了多行就取这几行。 */
@@ -829,21 +922,111 @@
       action(button.getAttribute('data-value'));
     });
 
-    // 颜色按钮：色条实时跟着选择走，选好后写进正文
-    Array.prototype.forEach.call(toolbar.querySelectorAll('[data-color]'), function (field) {
-      var input = field.querySelector('input');
-      if (!input) {
+    /* 颜色按钮：单击把当前颜色应用到选中文字（直接做，不等任何手势）；鼠标移到按钮上
+       浮出一排预置色，换颜色在浮层里完成。
+
+       为什么浮层是自己画的：系统调色板只能由用户手势打开，鼠标移上去时浏览器会直接
+       拒绝（控制台留一句 "A user gesture is required to show the color picker"），
+       所以「移上来就显示」的这张只能是页面里的调色板——预置色见 COLOR_SWATCHES，
+       末尾那块彩虹色才是系统调色板，点它算用户手势，能正常打开。
+
+       在浮层里选颜色（预置色或系统调色板）只做记录：更新按钮下的色条、写进 localStorage。
+       「换色」与「应用」是两步，免得顺手改掉正文。存 localStorage 是因为保存走原生提交、
+       整页重渲染，不记的话按钮会回到 HTML 里写死的默认色。 */
+    var COLOR_SWATCHES = [
+      '#e06c75', '#e5c07b', '#98c379', '#56b6c2',
+      '#61afef', '#c678dd', '#f0f0f0', '#ffd54f'
+    ];
+    var COLOR_STORE_PREFIX = 'editor-color:';
+
+    function readStoredColor(name, fallback) {
+      try {
+        return window.localStorage.getItem(COLOR_STORE_PREFIX + name) || fallback;
+      } catch (error) {
+        return fallback; // 隐身模式等场景会抛异常，退回 HTML 里的默认值
+      }
+    }
+
+    function storeColor(name, color) {
+      try {
+        window.localStorage.setItem(COLOR_STORE_PREFIX + name, color);
+      } catch (error) {
+        /* 记不住颜色不影响使用 */
+      }
+    }
+
+    Array.prototype.forEach.call(toolbar.querySelectorAll('[data-color]'), function (box) {
+      var face = box.querySelector('[data-color-apply]');
+      var palette = box.querySelector('.color-palette');
+      if (!face || !palette) {
         return;
       }
-      field.style.setProperty('--tool-color', input.value);
+
+      var name = box.getAttribute('data-color') || '';
+      var prop = name === 'back' ? 'background-color' : 'color';
+      var current = readStoredColor(name, box.getAttribute('data-default') || '#000000');
+      var swatches = [];
+
+      // 预置色一个个画出来，两个颜色按钮共用同一份列表
+      COLOR_SWATCHES.forEach(function (color) {
+        var swatch = document.createElement('button');
+        swatch.type = 'button';
+        swatch.className = 'color-swatch';
+        swatch.setAttribute('data-swatch', color);
+        swatch.style.setProperty('--swatch', color);
+        swatch.title = color;
+        swatch.setAttribute('aria-label', color);
+        swatch.addEventListener('click', function () {
+          choose(color);
+        });
+        swatches.push(swatch);
+        palette.appendChild(swatch);
+      });
+
+      // 末尾这块彩虹色才是系统调色板：点它算用户手势，浏览器才肯打开
+      var custom = document.createElement('label');
+      custom.className = 'color-swatch color-swatch-custom';
+      custom.title = '自定义颜色（打开系统调色板）';
+
+      var input = document.createElement('input');
+      input.type = 'color';
+      input.setAttribute('aria-label', '自定义颜色');
       input.addEventListener('input', function () {
-        field.style.setProperty('--tool-color', input.value);
+        current = input.value; // 拖系统调色板时按钮下的色条实时跟着走
+        paint();
       });
       input.addEventListener('change', function () {
-        field.style.setProperty('--tool-color', input.value);
-        applyColor(field.getAttribute('data-color') === 'back' ? 'background-color' : 'color',
-                   input.value);
+        current = input.value;
+        storeColor(name, current);
+        paint();
       });
+
+      custom.appendChild(input);
+      palette.appendChild(custom);
+
+      /* 当前颜色的三处表现：按钮下的色条、预置色里的选中标记、系统调色板的初始值 */
+      function paint() {
+        face.style.setProperty('--tool-color', current);
+        swatches.forEach(function (swatch) {
+          var active = swatch.getAttribute('data-swatch') === current;
+          swatch.classList.toggle('is-active', active);
+          swatch.setAttribute('aria-pressed', String(active));
+        });
+        custom.classList.toggle('is-active', COLOR_SWATCHES.indexOf(current) === -1);
+        input.value = current;
+      }
+
+      function choose(color) {
+        current = color;
+        storeColor(name, current);
+        paint();
+      }
+
+      face.addEventListener('click', function () {
+        applyColor(prop, current);
+      });
+
+      paint();
     });
   }
 
@@ -1123,6 +1306,35 @@
       };
       reader.readAsText(file);
       importInput.value = '';
+    });
+  }
+
+  /* ------------------------------------------------ 1.3 Ctrl+S 保存
+
+     浏览器把 Ctrl+S 留给了「保存网页」，对着一份正在写的正文按下去只会弹出另存为
+     对话框。拦下来提交当前表单即可——提交前的必填校验、submit 事件上的处理都还是
+     原生那套，所以用 requestSubmit 而不是 submit（后者会跳过校验）。
+
+     监听挂在 document 上而不是表单上：焦点落在标题、标签这些字段里时也要能保存。
+     要提交的表单从正文输入框反查，页面上那些预览模式 / 退出 / 删除用的表单不会被
+     误提交。 */
+
+  var editorForm = textarea ? textarea.form : null;
+
+  if (editorForm) {
+    document.addEventListener('keydown', function (event) {
+      if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) {
+        return; // 只认不带其他修饰键的 Ctrl+S / Cmd+S
+      }
+      if (String(event.key).toLowerCase() !== 's') {
+        return;
+      }
+      event.preventDefault(); // 拦掉浏览器默认的「保存网页」
+      if (editorForm.requestSubmit) {
+        editorForm.requestSubmit();
+      } else {
+        editorForm.submit();
+      }
     });
   }
 

@@ -1698,7 +1698,14 @@ input[type="checkbox"] {
 }
 
 /* 两个颜色按钮：图标下方垫一条当前颜色的色条，A 表示文字色、▨ 表示背景色。
-   真正的 <input type="color"> 缩成不可见的一点（不能用 display:none，那样点不开系统调色板）。 */
+   鼠标移到按钮上浮出一排预置色，末尾的彩虹块才是系统调色板——系统调色板只能由用户
+   手势打开，hover 时浏览器会直接拒绝（控制台留一句 "A user gesture is required to
+   show the color picker"），所以「移上来就显示」的这张调色板得自己画。 */
+.color-tool {
+  position: relative;
+  display: flex;
+}
+
 .tool-color {
   position: relative;
   padding-bottom: 5px;
@@ -1716,21 +1723,86 @@ input[type="checkbox"] {
   background: var(--tool-color, var(--border-strong));
 }
 
-.tool-color input {
+.color-palette {
   position: absolute;
-  bottom: 0;
+  top: calc(100% + 6px);
   left: 50%;
-  width: 1px;
-  height: 1px;
+  z-index: 20;
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.35);
+  transform: translateX(-50%);
+  opacity: 0;
+  visibility: hidden;
+  /* 显示晚一拍：鼠标扫过工具栏时不会一路弹出调色板。
+     隐藏也留一点余量，鼠标从按钮down到浮层上的路上不会闪掉。 */
+  transition: opacity 0.12s ease 0.12s, visibility 0s linear 0.3s;
+}
+
+/* 浮层与按钮之间那道空隙也归浮层：鼠标一路移下来不断档，不然跨过空隙时 :hover 会丢 */
+.color-palette::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  right: 0;
+  left: 0;
+  height: 7px;
+}
+
+.color-tool:hover .color-palette,
+.color-tool:focus-within .color-palette {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.color-swatch {
+  display: block;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--swatch);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.color-swatch:hover {
+  transform: scale(1.15);
+}
+
+.color-swatch:focus-visible,
+.color-swatch-custom:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* 当前用的颜色：外圈亮一道 */
+.color-swatch.is-active {
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 3px var(--accent);
+}
+
+.color-swatch-custom {
+  position: relative;
+  background: conic-gradient(from 0.25turn,
+    #e06c75, #e5c07b, #98c379, #56b6c2, #61afef, #c678dd, #e06c75);
+}
+
+/* 真正的 <input type="color"> 铺满彩虹块但不可见（不能用 display:none，那样点不开系统调色板） */
+.color-swatch-custom input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   padding: 0;
   border: none;
   opacity: 0;
-  pointer-events: none;
-}
-
-.tool-color:focus-within {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  cursor: pointer;
 }
 
 .editor-toolbar-end {

@@ -26,12 +26,19 @@
 
       <span class="tool-separator" aria-hidden="true"></span>
 
-      <label class="tool tool-color" title="字体颜色（选好颜色后应用到选中文字）" data-color="fore">
-        A<input type="color" value="#e06c75">
-      </label>
-      <label class="tool tool-color" title="字体背景颜色（选好颜色后应用到选中文字）" data-color="back">
-        ▨<input type="color" value="#ffd54f">
-      </label>
+      {# 颜色按钮：单击把当前颜色应用到选中文字，鼠标移上来浮出一排预置色。
+         浮层里的预置色与系统调色板由 admin.js 生成（两个按钮共用同一份定义），
+         默认色写在 data-default 上。 #}
+      <div class="color-tool" data-color="fore" data-default="#e06c75">
+        <button class="tool tool-color" type="button" data-color-apply
+                title="字体颜色（单击应用当前颜色，鼠标移上来换颜色）" aria-label="字体颜色">A</button>
+        <div class="color-palette" role="group" aria-label="选择字体颜色"></div>
+      </div>
+      <div class="color-tool" data-color="back" data-default="#ffd54f">
+        <button class="tool tool-color" type="button" data-color-apply
+                title="字体背景颜色（单击应用当前颜色，鼠标移上来换颜色）" aria-label="字体背景颜色">▨</button>
+        <div class="color-palette" role="group" aria-label="选择字体背景颜色"></div>
+      </div>
 
       <span class="tool-separator" aria-hidden="true"></span>
 

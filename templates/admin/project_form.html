@@ -20,7 +20,8 @@
 
       <label class="field">
         <span class="field-label">slug <span class="field-hint">小写字母、数字、连字符</span></span>
-        <input class="input" type="text" name="slug" pattern="[a-z0-9][a-z0-9-]*"
+        {# 字符组里的 - 要转义：不转义在浏览器按 v 模式编译时会直接报非法正则，校验会整个失效 #}
+        <input class="input" type="text" name="slug" pattern="[a-z0-9][a-z0-9\-]*"
                value="{{ form.get('slug') if 'slug' in form else (project.slug if project else default_slug) }}">
       </label>
 

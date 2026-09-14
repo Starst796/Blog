@@ -654,6 +654,18 @@ def _git_commit(root: Path, message: str) -> None:
         logger.warning("内容自动提交失败：%s", detail or exc)
 
 
+def _as_lf(text: str) -> str:
+    """把换行统一成 LF。
+
+    表单提交上来的正文是 CRLF：HTML 规范要求浏览器提交前把 LF 规范化成 CRLF，所以
+    Python 这侧拿到的是 ``\\r\\n``。而 Windows 上 ``write_text`` 默认又会把每个 ``\\n``
+    翻译成 ``os.linesep``（同样是 ``\\r\\n``），两者叠在一起写出的是 ``\\r\\r\\n``；
+    读回来时 ``\\r\\r\\n`` 被当成一个空行，于是每保存一次，正文里的空行就翻一倍。
+    写成 LF 还让 ``content/`` 目录里的文件跨平台一致，git 里不会出现混合换行。
+    """
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 @dataclass(slots=True)
 class ContentWriter:
     """把文档写回磁盘，并负责缓存失效与（可选的）git 提交。"""
@@ -666,7 +678,7 @@ class ContentWriter:
         target = target_dir / f"{slug}.md"
         temp = target.with_suffix(".md.tmp")
         # 先写临时文件再原子替换，避免写入过程中被读到半截内容
-        temp.write_text(payload, encoding="utf-8")
+        temp.write_text(_as_lf(payload), encoding="utf-8", newline="\n")
         temp.replace(target)
         invalidate()
         _git_commit(self.root, message)
@@ -691,8 +703,11 @@ class ContentWriter:
         target.parent.mkdir(parents=True, exist_ok=True)
         temp = target.with_suffix(".yml.tmp")
         temp.write_text(
-            SITE_FILE_HEADER + yaml.safe_dump(payload, allow_unicode=True, sort_keys=False),
+            _as_lf(
+                SITE_FILE_HEADER + yaml.safe_dump(payload, allow_unicode=True, sort_keys=False)
+            ),
             encoding="utf-8",
+            newline="\n",
         )
         temp.replace(target)
         invalidate()
