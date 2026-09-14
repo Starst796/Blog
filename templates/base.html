@@ -77,6 +77,11 @@
   <footer class="site-footer">
     <div class="container footer-inner">
       <p class="footer-copy">© {{ current_year }} {{ site.name }}</p>
+      <p class="footer-icp">
+        {% if site_icp %}
+          <a href="https://beian.miit.gov.cn/" target="_blank" rel="external nofollow noopener">{{ site_icp }}</a>
+        {% endif %}
+      </p>
       <p class="footer-links">
         <a href="{{ url_for('projects') }}">项目</a>
         <a href="{{ url_for('articles') }}">文章</a>

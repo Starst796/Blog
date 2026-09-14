@@ -33,6 +33,7 @@ class Config:
     # 对外访问地址，用于 canonical / sitemap.xml / atom.xml。末尾斜杠会被去掉。
     # 默认值仅供本地开发；上线前请改成真实域名，否则搜索结果会指向 localhost。
     SITE_URL = os.environ.get("SITE_URL", "http://127.0.0.1:8080").rstrip("/")
+    SITE_ICP = os.environ.get("SITE_ICP", "")
     # <html lang="…">，同时影响部分搜索引擎与屏幕阅读器的语言判定
     SITE_LANG = os.environ.get("SITE_LANG", "zh-CN")
     # 内容按「自然日」处理，此处只影响输出到 atom.xml 的时区偏移

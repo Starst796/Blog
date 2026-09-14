@@ -117,6 +117,7 @@ def _register_context(app: Flask) -> None:
             "site_url": app.config["SITE_URL"],
             "site_lang": app.config["SITE_LANG"],
             "site_tz": app.config["SITE_TZ_OFFSET"],
+            "site_icp": app.config["SITE_ICP"],
             "current_year": datetime.now().year,
             "asset_version": ASSET_VERSION,
             "preview_mode": preview_enabled(),
