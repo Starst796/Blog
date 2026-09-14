@@ -578,14 +578,19 @@
      用行内 HTML，Markdown 会原样透传。 */
 
   /* 用文本替换 [start, end)，并把选区放到指定位置。工具栏的每个动作最后都走这里，
-     光标、标尺、预览的刷新都集中在这一处。 */
+     光标、标尺、预览的刷新都集中在这一处。
+
+     顺序要紧：给 value 赋值会让浏览器把「当前光标」挪到文末，此时若先 focus()，
+     浏览器会先按这个假光标把编辑框滚到文末，后面 setSelectionRange 虽然把光标摆
+     回原处，滚动位置却不会跟着退回来——于是点一下工具栏，编辑器就整个跳到底部。
+     所以先摆好选区再 focus()，让浏览器只按真正的光标位置决定滚不滚。 */
   function replaceRange(start, end, text, selStart, selEnd) {
     textarea.value = textarea.value.slice(0, start) + text + textarea.value.slice(end);
     if (selStart == null) {
       selStart = selEnd = start + text.length;
     }
-    textarea.focus();
     textarea.setSelectionRange(selStart, selEnd);
+    textarea.focus();
     syncSource = 'editor';
     refreshLineTops();
     schedulePreview(0);
