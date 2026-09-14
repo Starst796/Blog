@@ -92,6 +92,9 @@ def _markdown() -> md.Markdown:
                 "toc",         # 提取目录
                 "sane_lists",
                 "admonition",
+                # 删除线：`extra` 并不包含 GFM 的 ~~文字~~，少了它工具栏的删除线按钮
+                # 只会插入一对原样输出的波浪号。
+                "pymdownx.tilde",
             ],
             extension_configs={
                 "codehilite": {
@@ -99,6 +102,9 @@ def _markdown() -> md.Markdown:
                     "guess_lang": False,
                     "linenums": False,
                 },
+                # 只保留 ~~删除~~，关掉单个 ~ 的下标写法：中文里「约 3 ~ 5 个」
+                # 这类区间很常见，若开下标会被吃掉。
+                "pymdownx.tilde": {"subscript": False},
                 # 中文标题若用默认 slugify 会退化成 _1、_2 这类编号，标题顺序一变
                 # 锚点就失效；保留 Unicode 可得到稳定且可读的锚点。
                 "toc": {"permalink": False, "toc_depth": "2-4", "slugify": slugify_unicode},

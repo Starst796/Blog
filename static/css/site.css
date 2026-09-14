@@ -929,6 +929,11 @@ body:has(.preview-bar) .site-header {
   color: var(--fg);
 }
 
+.prose del {
+  color: var(--fg-muted);
+  text-decoration-thickness: 1.5px;
+}
+
 .prose blockquote {
   margin: 1.5em 0;
   padding: 2px 0 2px 20px;
