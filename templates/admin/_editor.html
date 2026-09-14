@@ -1,15 +1,83 @@
-{# 共用 Markdown 编辑器：正文输入 + 图片上传 + 实时预览。需在 include 前用 with 传入 body_value。 #}
+{# 共用 Markdown 编辑器：格式工具栏 + 正文输入 + 实时预览。需在 include 前用 with 传入 body_value。 #}
 <div class="editor" data-editor>
-  <div class="editor-toolbar">
-    <span class="editor-hint">正文支持 Markdown</span>
-    <label class="button button-small button-ghost upload-button">
-      插入图片
-      <input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/avif"
-             hidden data-upload-input>
-    </label>
-    <button class="button button-small button-ghost" type="button"
-            data-toggle-preview aria-pressed="true">隐藏预览</button>
-    <span class="editor-status" data-editor-status aria-live="polite"></span>
+  {# 工具栏按钮位置上只放一个字符的图标，鼠标悬停由 title 显示用途与对应的 Markdown 写法。
+     按钮上的 data-tool / data-value 由 admin.js 的动作表消费，加按钮只要在这里补一行。 #}
+  <div class="editor-toolbar" role="toolbar" aria-label="Markdown 工具栏" data-toolbar>
+    <div class="editor-tools">
+      <button class="tool" type="button" data-tool="heading" data-value="1"
+              title="一级标题（#）" aria-label="一级标题">1</button>
+      <button class="tool" type="button" data-tool="heading" data-value="2"
+              title="二级标题（##）" aria-label="二级标题">2</button>
+      <button class="tool" type="button" data-tool="heading" data-value="3"
+              title="三级标题（###）" aria-label="三级标题">3</button>
+      <button class="tool" type="button" data-tool="heading" data-value="0"
+              title="正文（去掉标题标记）" aria-label="正文">¶</button>
+
+      <span class="tool-separator" aria-hidden="true"></span>
+
+      <button class="tool tool-bold" type="button" data-tool="bold"
+              title="粗体（**文字**）" aria-label="粗体">B</button>
+      <button class="tool tool-italic" type="button" data-tool="italic"
+              title="斜体（*文字*）" aria-label="斜体">I</button>
+      <button class="tool tool-underline" type="button" data-tool="underline"
+              title="下划线（&lt;u&gt;文字&lt;/u&gt;）" aria-label="下划线">U</button>
+      <button class="tool tool-strike" type="button" data-tool="strike"
+              title="删除线（~~文字~~）" aria-label="删除线">S</button>
+
+      <span class="tool-separator" aria-hidden="true"></span>
+
+      <label class="tool tool-color" title="字体颜色（选好颜色后应用到选中文字）" data-color="fore">
+        A<input type="color" value="#e06c75">
+      </label>
+      <label class="tool tool-color" title="字体背景颜色（选好颜色后应用到选中文字）" data-color="back">
+        ▨<input type="color" value="#ffd54f">
+      </label>
+
+      <span class="tool-separator" aria-hidden="true"></span>
+
+      <button class="tool" type="button" data-tool="align" data-value="left"
+              title="左对齐（默认，去掉对齐标记）" aria-label="左对齐">⇤</button>
+      <button class="tool" type="button" data-tool="align" data-value="center"
+              title="居中对齐" aria-label="居中对齐">↔</button>
+      <button class="tool" type="button" data-tool="align" data-value="right"
+              title="右对齐" aria-label="右对齐">⇥</button>
+
+      <span class="tool-separator" aria-hidden="true"></span>
+
+      <button class="tool" type="button" data-tool="ordered"
+              title="有序列表（1. 2. 3.）" aria-label="有序列表">①</button>
+      <button class="tool" type="button" data-tool="unordered"
+              title="无序列表（- 项目）" aria-label="无序列表">•</button>
+
+      <span class="tool-separator" aria-hidden="true"></span>
+
+      <button class="tool" type="button" data-tool="image"
+              title="插入图片（选择图片上传后插入）" aria-label="插入图片">▣</button>
+      <button class="tool" type="button" data-tool="link"
+              title="添加链接（[文字](网址)）" aria-label="添加链接">⛓</button>
+      <button class="tool" type="button" data-tool="rule"
+              title="分割线（---）" aria-label="分割线">─</button>
+      <button class="tool" type="button" data-tool="quote"
+              title="引用（&gt; 文字）" aria-label="引用">❝</button>
+
+      <span class="tool-separator" aria-hidden="true"></span>
+
+      <button class="tool" type="button" data-tool="import-md"
+              title="导入 Markdown 文件（会替换当前正文）" aria-label="导入 Markdown">↑</button>
+      <button class="tool" type="button" data-tool="export-md"
+              title="导出 Markdown 文件（含 front matter）" aria-label="导出 Markdown">↓</button>
+    </div>
+
+    <div class="editor-toolbar-end">
+      <button class="button button-small button-ghost" type="button"
+              data-toggle-preview aria-pressed="true">隐藏预览</button>
+      <span class="editor-status" data-editor-status aria-live="polite"></span>
+    </div>
+
+    <input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/avif"
+           hidden data-upload-input>
+    <input type="file" accept=".md,.markdown,.txt,text/markdown,text/plain"
+           hidden data-import-input>
   </div>
 
   <div class="editor-panes">

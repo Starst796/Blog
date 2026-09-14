@@ -1,10 +1,7 @@
 /* ==========================================================================
-   站点样式
-   设计语言：深色玻璃拟态，主色 #5865f2、CSS 变量驱动、支持明暗主题切换。
-   无外部字体与外链资源，首屏不产生额外网络请求。
-
-   客制化入口：只改下面「1. 设计令牌」里的变量即可整体换肤，
-   不必改动任何组件样式。例如把 --primary 换成品牌色、把 --radius 调小。
+   个人主页样式
+   设计语言沿用 starst.site 的深色玻璃拟态：主色 #5865f2、CSS 变量驱动、
+   支持明暗主题切换。无外部字体与外链资源，首屏不产生额外网络请求。
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
@@ -1552,15 +1549,122 @@ input[type="checkbox"] {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
+  gap: 6px 10px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border);
 }
 
-.editor-hint {
-  margin-right: auto;
-  color: var(--fg-faint);
-  font-size: 0.82rem;
+/* 工具栏按钮：默认只显示一个字符，用途靠 title 的悬停提示说明。
+   按钮按「字号 / 强调 / 颜色 / 对齐 / 列表 / 插入 / 文件」分组，组间用竖线隔开。 */
+.editor-tools {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+}
+
+.tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fg-muted);
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.tool:hover {
+  border-color: var(--border);
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.tool:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.tool:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.tool-separator {
+  flex: none;
+  width: 1px;
+  height: 16px;
+  margin: 0 5px;
+  background: var(--border);
+}
+
+/* 字符本身就是图示：B 加粗、I 斜体、U 下划线、S 删除线，省得再解释 */
+.tool-bold {
+  font-weight: 700;
+}
+
+.tool-italic {
+  font-style: italic;
+}
+
+.tool-underline {
+  text-decoration: underline;
+}
+
+.tool-strike {
+  text-decoration: line-through;
+}
+
+/* 两个颜色按钮：图标下方垫一条当前颜色的色条，A 表示文字色、▨ 表示背景色。
+   真正的 <input type="color"> 缩成不可见的一点（不能用 display:none，那样点不开系统调色板）。 */
+.tool-color {
+  position: relative;
+  padding-bottom: 5px;
+  cursor: pointer;
+}
+
+.tool-color::after {
+  content: "";
+  position: absolute;
+  right: 6px;
+  bottom: 3px;
+  left: 6px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--tool-color, var(--border-strong));
+}
+
+.tool-color input {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tool-color:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.editor-toolbar-end {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
 }
 
 .editor-status {

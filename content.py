@@ -121,6 +121,8 @@ _MD_NOISE_RE = [
     (re.compile(r"!\[[^\]]*\]\([^)]*\)"), " "),  # 图片
     (re.compile(r"\[([^\]]*)\]\([^)]*\)"), r"\1"),  # 链接保留文字
     (re.compile(r"^\s{0,3}#{1,6}\s*", re.M), ""),   # 标题标记
+    (re.compile(r"</?[A-Za-z][^>]*>"), " "),     # 行内 HTML（下划线、颜色等）
+    (re.compile(r"\{:[^}]*\}"), " "),            # attr_list 属性（对齐等）
     (re.compile(r"[*_~>]"), ""),                 # 强调等标记
 ]
 
@@ -263,7 +265,7 @@ class Project:
 
 
 DEFAULT_SITE: dict[str, Any] = {
-    "name": "我的站点",
+    "name": "Starst",
     "tagline": "",
     "bio": "",
     "location": "",
