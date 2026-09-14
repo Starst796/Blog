@@ -250,6 +250,7 @@ links:
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `SITE_URL` | `http://127.0.0.1:8080` | 对外地址，用于 canonical / sitemap / atom。**上线必须改**，否则会打到 localhost（启动日志会提醒） |
+| `SITE_ICP` | `` | 该网址的备案号，用于在 footer 中显示 |
 | `SITE_LANG` | `zh-CN` | `<html lang="…">` |
 | `SITE_TZ_OFFSET` | `+08:00` | Atom 输出中的时区偏移 |
 | `CONTENT_DIR` | 仓库内的 `content/` | 内容目录。生产建议指向部署树之外，如 `/srv/blog/content` |
