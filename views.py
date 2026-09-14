@@ -95,17 +95,26 @@ def project_detail(slug: str):
 def articles():
     per_page = current_app.config["PAGE_SIZE"]
     tag = (request.args.get("tag") or "").strip() or None
+    collection = (request.args.get("collection") or "").strip() or None
     preview = preview_enabled()
-    total = content.count_articles(include_drafts=preview, tag=tag)
+    total = content.count_articles(include_drafts=preview, tag=tag, collection=collection)
     total_pages = max(1, math.ceil(total / per_page))
     page = min(max(request.args.get("page", type=int) or 1, 1), total_pages)
 
+    items = content.list_articles(
+        include_drafts=preview,
+        tag=tag,
+        collection=collection,
+        limit=per_page,
+        offset=(page - 1) * per_page,
+    )
+
     return render_template(
         "articles.html",
-        articles=content.list_articles(
-            include_drafts=preview, tag=tag, limit=per_page, offset=(page - 1) * per_page
-        ),
-        tags=content.list_tags(include_drafts=preview),
+        articles=items,
+        collections=content.list_collections(include_drafts=preview),
+        tags=content.list_tags(include_drafts=preview, collection=collection),
+        active_collection=collection,
         active_tag=tag,
         total=total,
         page=page,
@@ -120,19 +129,22 @@ def article_detail(slug: str):
     if article is None:
         abort(404)
 
-    # 列表按日期倒序，因此 index-1 更新、index+1 更早
-    ordered = content.list_articles(include_drafts=preview)
-    slugs = [item.slug for item in ordered]
+    # 相邻文章只在同一文集内寻找：跨文集的文章互不串联，
+    # 阅读体验上等同于「把这篇文集从头读到尾」。
+    # 列表按日期倒序，因此 index-1 更新、index+1 更早。
+    siblings = content.list_articles(include_drafts=preview, collection=article.collection)
+    slugs = [item.slug for item in siblings]
     position = slugs.index(slug) if slug in slugs else None
 
-    older = ordered[position + 1] if position is not None and position + 1 < len(ordered) else None
-    newer = ordered[position - 1] if position is not None and position > 0 else None
+    older = siblings[position + 1] if position is not None and position + 1 < len(siblings) else None
+    newer = siblings[position - 1] if position is not None and position > 0 else None
 
     return render_template(
         "article_detail.html",
         article=article,
         older_article=older,
         newer_article=newer,
+        collection_total=len(siblings),
     )
 
 

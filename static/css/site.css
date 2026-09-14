@@ -697,6 +697,20 @@ body:has(.preview-bar) .site-header {
   font-size: 0.76rem;
 }
 
+/* --------------------------------------------------------------------------
+   8.1 文集（文章列表按时间平铺，文集只作为条目标注）
+   -------------------------------------------------------------------------- */
+
+.collection-cloud {
+  margin-bottom: 14px;
+}
+
+/* 条目内的文集标签：比标签更淡，作为分组标注而非链接重点 */
+.collection-chip-small {
+  padding: 2px 9px;
+  font-size: 0.78rem;
+}
+
 .badge {
   flex: none;
   padding: 2px 9px;
@@ -1140,6 +1154,66 @@ body:has(.preview-bar) .site-header {
   margin-bottom: 34px;
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+}
+
+.post-collection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 0;
+  font-size: 0.86rem;
+}
+
+.post-collection-label {
+  color: var(--fg-faint);
+}
+
+.collection-chip {
+  padding: 3px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--fg-muted);
+  font-size: 0.82rem;
+  transition: color 0.16s ease, border-color 0.16s ease;
+}
+
+.collection-chip:hover {
+  color: var(--fg);
+  border-color: var(--border-strong);
+}
+
+.post-collection-count {
+  color: var(--fg-faint);
+  font-size: 0.82rem;
+}
+
+.post-nav-block {
+  max-width: 760px;
+  margin: 56px auto 0;
+  padding-top: 26px;
+  border-top: 1px solid var(--border);
+}
+
+.post-nav-hint {
+  margin: 0 0 14px;
+  color: var(--fg-faint);
+  font-size: 0.82rem;
+}
+
+.post-nav-hint a {
+  color: var(--accent);
+}
+
+.post-nav-hint a:hover {
+  color: var(--fg);
+}
+
+.post-nav-block .post-nav {
+  margin: 0;
+  padding-top: 0;
+  border-top: none;
 }
 
 .post-nav {

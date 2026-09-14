@@ -42,6 +42,9 @@ SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,80}$")
 # 图片对外的 URL 前缀（由 Flask 路由或 nginx alias 提供）
 MEDIA_URL_PREFIX = "/uploads"
 
+# 文章「文集」的默认值：front matter 未写 collection 的文章都归入这里
+DEFAULT_COLLECTION = "未归档"
+
 # ---------------------------------------------------------------- 内部状态
 
 _root: Path | None = None
@@ -171,6 +174,12 @@ def _parse_str_list(value: Any) -> list[str]:
     return [part.strip() for part in re.split(r"[,，;；]", str(value)) if part.strip()]
 
 
+def _parse_collection(value: Any) -> str:
+    """解析文章所属文集，缺省（或留空）时归入「未归档」。"""
+    name = str(value or "").strip()
+    return name or DEFAULT_COLLECTION
+
+
 def _estimate_words(text: str) -> int:
     """输出字符数量"""
     return len(text or "")
@@ -216,6 +225,7 @@ class Article:
     date: date
     updated: date | None
     summary: str
+    collection: str
     tags: list[str]
     draft: bool
     sensitive: bool
@@ -312,6 +322,8 @@ def _load_articles(root: Path) -> dict[str, Article]:
             date=created,
             updated=_parse_date(updated_raw) if updated_raw else None,
             summary=_derive_summary(meta, body),
+            # 兼容 ``series:`` 这个常见写法，二者等价
+            collection=_parse_collection(meta.get("collection") or meta.get("series")),
             tags=_parse_str_list(meta.get("tags")),
             draft=_as_bool(meta.get("draft"), False),
             sensitive=_as_bool(meta.get("sensitive"), False),
@@ -449,15 +461,19 @@ def list_articles(
     *,
     include_drafts: bool = False,
     tag: str | None = None,
+    collection: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> list[Article]:
-    """按发布日期倒序返回文章列表。"""
+    """按发布日期倒序返回文章列表，可按文集与标签筛选。"""
     articles = list(_store()["articles"].values())
     if not include_drafts:
         # draft 是「暂时不发布」，sensitive 是「任何情况下都不对外输出」：
         # 后者用于存放含密钥一类内容，即使有人误把 draft 改成 false 也不会泄露。
         articles = [item for item in articles if not item.draft and not item.sensitive]
+    if collection:
+        wanted = collection.strip().lower()
+        articles = [item for item in articles if item.collection.lower() == wanted]
     if tag:
         needle = tag.strip().lower()
         articles = [item for item in articles if needle in {t.lower() for t in item.tags}]
@@ -471,8 +487,10 @@ def list_articles(
     return articles
 
 
-def count_articles(*, include_drafts: bool = False, tag: str | None = None) -> int:
-    return len(list_articles(include_drafts=include_drafts, tag=tag))
+def count_articles(
+    *, include_drafts: bool = False, tag: str | None = None, collection: str | None = None
+) -> int:
+    return len(list_articles(include_drafts=include_drafts, tag=tag, collection=collection))
 
 
 def get_article(slug: str, *, include_drafts: bool = False) -> Article | None:
@@ -486,15 +504,30 @@ def get_article(slug: str, *, include_drafts: bool = False) -> Article | None:
     return article
 
 
-def list_tags(*, include_drafts: bool = False) -> list[tuple[str, int]]:
-    """返回 ``[(标签, 篇数)]``，按篇数倒序。"""
+def list_tags(*, include_drafts: bool = False, collection: str | None = None) -> list[tuple[str, int]]:
+    """返回 ``[(标签, 篇数)]``，按篇数倒序。可限定在某个文集内统计。"""
     counter: dict[str, int] = {}
     for article in _store()["articles"].values():
         if (article.draft or article.sensitive) and not include_drafts:
             continue
+        if collection and article.collection.lower() != collection.strip().lower():
+            continue
         for tag in article.tags:
             counter[tag] = counter.get(tag, 0) + 1
     return sorted(counter.items(), key=lambda pair: (-pair[1], pair[0]))
+
+
+def list_collections(*, include_drafts: bool = False) -> list[tuple[str, int]]:
+    """返回 ``[(文集, 篇数)]``，按篇数倒序；「未归档」始终排在最后。"""
+    counter: dict[str, int] = {}
+    for article in _store()["articles"].values():
+        if (article.draft or article.sensitive) and not include_drafts:
+            continue
+        counter[article.collection] = counter.get(article.collection, 0) + 1
+    return sorted(
+        counter.items(),
+        key=lambda pair: (pair[0] == DEFAULT_COLLECTION, -pair[1], pair[0]),
+    )
 
 
 def list_articles_by_year(*, include_drafts: bool = False) -> list[tuple[int, list[Article]]]:
@@ -540,6 +573,7 @@ ARTICLE_TEMPLATE = """---
 title: {title}
 date: {date}
 summary: {summary}
+collection: 未归档
 tags: []
 draft: true
 ---

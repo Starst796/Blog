@@ -152,6 +152,8 @@ def _inject_admin_globals():
         "admin_username": current_app.config["ADMIN_USERNAME"],
         "password_configured": bool(current_app.config["ADMIN_PASSWORD_HASH"]),
         "preview_mode": preview_enabled(),
+        # 供文章表单的「文集」输入框做候选项，方便复用已有文集名
+        "collection_options": [name for name, _ in content.list_collections(include_drafts=True)],
     }
 
 
@@ -259,6 +261,12 @@ def _read_article_form() -> tuple[dict, str, list[str]]:
         # 敏感内容即使取消草稿也不会对外输出，用于存放密钥、凭据一类文本
         "sensitive": form.get("sensitive") == "on",
     }
+
+    # 文集留空即归入默认的「未归档」。默认值不写进 front matter，
+    # 保持文件干净；非默认文集则显式写入。
+    collection = (form.get("collection") or "").strip()
+    if collection and collection != content.DEFAULT_COLLECTION:
+        metadata["collection"] = collection
 
     summary = (form.get("summary") or "").strip()
     if summary:

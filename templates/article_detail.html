@@ -29,6 +29,12 @@
           {%- elif article.draft %}<span class="badge badge-draft">草稿</span>{% endif %}
         </p>
 
+        <p class="post-collection">
+          <span class="post-collection-label">文集</span>
+          <a class="collection-chip" href="{{ url_for('articles', collection=article.collection) }}">{{ article.collection }}</a>
+          {% if collection_total > 1 %}<span class="post-collection-count">共 {{ collection_total }} 篇</span>{% endif %}
+        </p>
+
         {% if article.sensitive or article.draft %}
           <p class="post-visibility">
             {% if article.sensitive %}
@@ -65,19 +71,25 @@
     </article>
 
     {% if older_article or newer_article %}
-      <nav class="post-nav" aria-label="相邻文章">
-        {% if older_article %}
-          <a class="post-nav-item" href="{{ older_article.url }}">
-            <span class="post-nav-label">← 更早</span>
-            <span class="post-nav-title">{{ older_article.title }}</span>
-          </a>
-        {% endif %}
-        {% if newer_article %}
-          <a class="post-nav-item is-next" href="{{ newer_article.url }}">
-            <span class="post-nav-label">更新 →</span>
-            <span class="post-nav-title">{{ newer_article.title }}</span>
-          </a>
-        {% endif %}
+      {# 上一篇 / 下一篇只在同一文集内跳转，便于顺着文集连续阅读 #}
+      <nav class="post-nav-block" aria-label="同一文集内的相邻文章">
+        <p class="post-nav-hint">
+          同一文集 · <a href="{{ url_for('articles', collection=article.collection) }}">{{ article.collection }}</a>
+        </p>
+        <div class="post-nav">
+          {% if older_article %}
+            <a class="post-nav-item" href="{{ older_article.url }}">
+              <span class="post-nav-label">← 更早</span>
+              <span class="post-nav-title">{{ older_article.title }}</span>
+            </a>
+          {% endif %}
+          {% if newer_article %}
+            <a class="post-nav-item is-next" href="{{ newer_article.url }}">
+              <span class="post-nav-label">更新 →</span>
+              <span class="post-nav-title">{{ newer_article.title }}</span>
+            </a>
+          {% endif %}
+        </div>
       </nav>
     {% endif %}
   </div>

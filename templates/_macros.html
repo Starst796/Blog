@@ -36,7 +36,7 @@
 {% endmacro %}
 
 
-{% macro article_row(article, show_summary=true) %}
+{% macro article_row(article, show_summary=true, show_collection=false) %}
   <article class="entry">
     <time class="entry-date" datetime="{{ article.date.isoformat() }}">
       <span class="entry-year">{{ article.date.year }}</span>
@@ -55,8 +55,12 @@
       {% endif %}
 
       <p class="entry-meta">
+        {% if show_collection %}
+          <a class="collection-chip collection-chip-small"
+             href="{{ url_for('articles', collection=article.collection) }}">{{ article.collection }}</a>
+        {% endif %}
         {% for tag in article.tags %}
-          <a class="tag" href="{{ url_for('articles', tag=tag) }}">#{{ tag }}</a>
+          <a class="tag" href="{{ url_for('articles', collection=None if show_collection else article.collection, tag=tag) }}">#{{ tag }}</a>
         {% endfor %}
         <span class="entry-words">{{ article.words }} 字符</span>
       </p>
@@ -65,13 +69,11 @@
 {% endmacro %}
 
 
-{% macro pagination(page, total_pages, endpoint, tag=None) %}
+{% macro pagination(page, total_pages, endpoint, tag=None, collection=None) %}
   {% if total_pages > 1 %}
-    {% set newer_url = url_for(endpoint, page=page - 1, tag=tag) if tag else url_for(endpoint, page=page - 1) %}
-    {% set older_url = url_for(endpoint, page=page + 1, tag=tag) if tag else url_for(endpoint, page=page + 1) %}
     <nav class="pagination" aria-label="分页">
       {% if page > 1 %}
-        <a class="page-link" href="{{ newer_url }}">← 较新</a>
+        <a class="page-link" href="{{ url_for(endpoint, page=page - 1, tag=tag, collection=collection) }}">← 较新</a>
       {% else %}
         <span class="page-link is-disabled">← 较新</span>
       {% endif %}
@@ -79,7 +81,7 @@
       <span class="page-status">第 {{ page }} / {{ total_pages }} 页</span>
 
       {% if page < total_pages %}
-        <a class="page-link" href="{{ older_url }}">较旧 →</a>
+        <a class="page-link" href="{{ url_for(endpoint, page=page + 1, tag=tag, collection=collection) }}">较旧 →</a>
       {% else %}
         <span class="page-link is-disabled">较旧 →</span>
       {% endif %}

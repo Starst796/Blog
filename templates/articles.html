@@ -2,42 +2,59 @@
 {% import "_macros.html" as m %}
 
 {% block title %}
-  {%- if active_tag %}#{{ active_tag }} · 文章{% else %}文章{% endif %} · {{ site.name }}
+  {%- if active_collection %}{{ active_collection }}{% else %}文章{% endif %}
+  {%- if active_tag %} · #{{ active_tag }}{% endif %} · {{ site.name }}
 {% endblock %}
-{% block description %}共 {{ total }} 篇文章{% if active_tag %}，标签「{{ active_tag }}」{% endif %}。{% endblock %}
+{% block description %}共 {{ total }} 篇文章{% if active_collection %}，文集「{{ active_collection }}」{% endif %}{% if active_tag %}，标签「{{ active_tag }}」{% endif %}。{% endblock %}
 
 {% block content %}
   <div class="container page">
     <header class="page-head">
       <h1 class="page-title">
-        {% if active_tag %}
-          标签：{{ active_tag }}
-        {% else %}
-          文章
-        {% endif %}
+        {% if active_collection %}{{ active_collection }}{% else %}文章{% endif %}
       </h1>
       <p class="page-sub">
-        共 {{ total }} 篇{% if active_tag %} · <a href="{{ url_for('articles') }}">查看全部</a>{% endif %}
+        共 {{ total }} 篇
+        {%- if active_tag %} · 标签 #{{ active_tag }} · <a href="{{ url_for('articles', collection=active_collection) }}">清除标签</a>{% endif %}
+        {%- if active_collection or active_tag %} · <a href="{{ url_for('articles') }}">查看全部</a>{% endif %}
       </p>
     </header>
 
+    {# 第一层分类：文集 #}
+    {% if collections %}
+      <nav class="tag-cloud collection-cloud" aria-label="文集">
+        <a class="tag{% if not active_collection %} is-active{% endif %}"
+           href="{{ url_for('articles', tag=active_tag) }}">全部文集</a>
+        {% for name, count in collections %}
+          <a class="tag{% if active_collection == name %} is-active{% endif %}"
+             href="{{ url_for('articles', collection=name, tag=active_tag) }}">{{ name }}<span class="tag-count">{{ count }}</span></a>
+        {% endfor %}
+      </nav>
+    {% endif %}
+
+    {# 第二层分类：标签（随所选文集收窄） #}
     {% if tags %}
       <nav class="tag-cloud" aria-label="标签">
-        <a class="tag{% if not active_tag %} is-active{% endif %}" href="{{ url_for('articles') }}">全部</a>
+        <a class="tag{% if not active_tag %} is-active{% endif %}"
+           href="{{ url_for('articles', collection=active_collection) }}">全部标签</a>
         {% for name, count in tags %}
           <a class="tag{% if active_tag == name %} is-active{% endif %}"
-             href="{{ url_for('articles', tag=name) }}">#{{ name }}<span class="tag-count">{{ count }}</span></a>
+             href="{{ url_for('articles', collection=active_collection, tag=name) }}">#{{ name }}<span class="tag-count">{{ count }}</span></a>
         {% endfor %}
       </nav>
     {% endif %}
 
     {% if articles %}
+      {# 一律按时间倒序平铺；只有「全部文集」时在条目上标注所属文集 #}
       <div class="entry-list">
-        {% for article in articles %}{{ m.article_row(article) }}{% endfor %}
+        {% for article in articles %}
+          {{ m.article_row(article, true, not active_collection) }}
+        {% endfor %}
       </div>
-      {{ m.pagination(page, total_pages, 'articles', active_tag) }}
+      {{ m.pagination(page, total_pages, 'articles', active_tag, active_collection) }}
     {% else %}
       {{ m.empty_state('这里还没有内容。') }}
     {% endif %}
   </div>
 {% endblock %}
+

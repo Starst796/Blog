@@ -49,6 +49,19 @@
                value="{{ form.get('tags') if 'tags' in form else (article.tags | join(', ') if article else '') }}">
       </label>
 
+      <label class="field">
+        <span class="field-label">文集 <span class="field-hint">留空即「未归档」</span></span>
+        <input class="input" type="text" name="collection" list="collection-options"
+               placeholder="未归档"
+               value="{{ form.get('collection') if 'collection' in form else (article.collection if article else '') }}">
+        <span class="field-hint">
+          同一文集的文章在列表页归为一组，详情页的「更早 / 更新」也只在本文集内跳转。
+        </span>
+        <datalist id="collection-options">
+          {% for name in collection_options %}<option value="{{ name }}"></option>{% endfor %}
+        </datalist>
+      </label>
+
       <div class="field">
         <label class="field-label" for="article-cover">封面图</label>
         <div class="field-row">

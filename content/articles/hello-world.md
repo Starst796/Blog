@@ -32,6 +32,7 @@ class Post:
 | front matter 字段 | 含义 |
 | --- | --- |
 | `date` | 发布日期，文章列表按它倒序排列 |
+| `collection` | 文集名称；留空则归入「未归档」 |
 | `draft` | 设为 `true` 时不出现在公开页面与订阅源中 |
 | `sensitive` | 设为 `true` 时任何情况下都不对外输出，适合存放含凭据的笔记 |
 | `cover` | 可选封面图，填 `/uploads/...` 或外链 |
