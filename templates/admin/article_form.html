@@ -2,6 +2,9 @@
 
 {% block title %}{{ '编辑文章' if article else '写新文章' }} · {{ site.name }}{% endblock %}
 
+{# 预览在浏览器本地渲染，需要编辑器专用的那几个脚本 #}
+{% block editor_scripts %}{% include "admin/_editor_scripts.html" %}{% endblock %}
+
 {% block admin_content %}
   {% set draft_checked = (form.get('draft') == 'on') if 'draft' in form else (article.draft if article else true) %}
   {% set sensitive_checked = (form.get('sensitive') == 'on') if 'sensitive' in form else (article.sensitive if article else false) %}

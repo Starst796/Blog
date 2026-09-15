@@ -1,7 +1,10 @@
 /* 后台交互，两块互相独立：
    1) Markdown 编辑器：格式工具栏、图片上传与 md 导入导出、实时预览、Ctrl+S 保存
    2) 路径字段（头像 / 封面）：上传后把地址回填到输入框
-   页面里只存在其中之一也能正常工作。 */
+   页面里只存在其中之一也能正常工作。
+
+   预览默认在浏览器本地渲染（static/js/markdown-local.js），编辑过程不发任何请求，
+   出图速度只取决于本机；本地渲染不可用时（依赖没加载上）退回服务端 /admin/preview。 */
 (function () {
   'use strict';
 
@@ -41,9 +44,9 @@
   var toggle = pick('[data-toggle-preview]');
 
   var EMPTY_PREVIEW = '<p class="muted">还没有内容。</p>';
-  var PREVIEW_DELAY = 250; // 输入停顿多久后渲染，避免逐字请求
+  var PREVIEW_DELAY = 120; // 输入停顿多久后重排，纯本地渲染，只是别让每次按键都重画
   var previewTimer = null;
-  var previewSeq = 0; // 丢弃过期响应，防止旧结果覆盖新结果
+  var previewSeq = 0; // 走服务端渲染时丢弃过期响应，防止旧结果覆盖新结果
   var previewVisible = Boolean(preview);
   var paintedHtml = null; // 上一次写入预览的 HTML，内容没变就不重绘（重绘会丢滚动位置）
   var paintToken = 0; // 每次重绘递增，用来让过期的图片回调失效
@@ -422,9 +425,21 @@
     });
   }
 
-  /* 把正文渲染到右侧预览栏。请求带序号，只有最新一次的结果会生效。 */
+  /* 把正文渲染到右侧预览栏。默认本地渲染：整篇正文不出浏览器，也没有等待服务器的延迟。
+     只有本地渲染不可用（vendor 脚本没加载上）时才退回服务端，那条路径的请求带序号，
+     只有最新一次的结果会生效。 */
   function renderPreview() {
     if (!preview || !previewVisible) {
+      return;
+    }
+
+    var local = window.BlogMarkdown;
+    if (local && local.available) {
+      paintPreview(local.render(textarea.value) || EMPTY_PREVIEW);
+      // 只清掉上一次的渲染错误，不影响「已插入图片」这类提示。
+      if (status && status.classList.contains('is-error')) {
+        setStatus('');
+      }
       return;
     }
 

@@ -2,6 +2,9 @@
 
 {% block title %}{{ '编辑项目' if project else '新建项目' }} · {{ site.name }}{% endblock %}
 
+{# 预览在浏览器本地渲染，需要编辑器专用的那几个脚本 #}
+{% block editor_scripts %}{% include "admin/_editor_scripts.html" %}{% endblock %}
+
 {% block admin_content %}
   {% set featured_checked = (form.get('featured') == 'on') if 'featured' in form else (project.featured if project else false) %}
   {% set links_value = form.get('links') if 'links' in form else (project.links_text if project else '') %}

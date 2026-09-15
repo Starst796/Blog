@@ -585,6 +585,11 @@ def upload_image():
 @bp.post("/preview")
 @login_required
 def preview_markdown():
+    """服务端渲染预览。
+
+    编辑器默认在浏览器本地渲染（static/js/markdown-local.js），正常路径不走这里；
+    仅在本地渲染不可用时（vendor 脚本没加载上）由 admin.js 回退调用，作为兜底。
+    顺带也是「预览与线上究竟差在哪」时的对照实现。"""
     payload = request.get_json(silent=True) or {}
     html, toc = content.render(payload.get("body") or "")
     return {"html": html, "toc": toc}

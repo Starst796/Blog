@@ -3,6 +3,8 @@
 {% block meta %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 
 {% block scripts %}
+  {# editor_scripts 由带编辑器的页面（文章 / 项目表单）填充，见 admin/_editor_scripts.html #}
+  {% block editor_scripts %}{% endblock %}
   <script src="{{ url_for('static', filename='js/admin.js', v=asset_version) }}" defer></script>
 {% endblock %}
 
