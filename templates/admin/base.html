@@ -47,6 +47,10 @@
       {% endif %}
     {% endwith %}
 
+    {# 本地草稿提示条：只有浏览器里存着这份内容且与服务器不一致时才由 admin.js 填上内容，
+       平时是 hidden 的空壳（第 3 节「编辑器本地缓存」）。 #}
+    <div class="draft-notice" data-draft-notice hidden></div>
+
     {% block admin_content %}{% endblock %}
   </div>
 {% endblock %}

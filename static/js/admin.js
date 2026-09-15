@@ -1,6 +1,8 @@
-/* 后台交互，两块互相独立：
+/* 后台交互，三块互相独立：
    1) Markdown 编辑器：格式工具栏、图片上传与 md 导入导出、实时预览、Ctrl+S 保存
    2) 路径字段（头像 / 封面）：上传后把地址回填到输入框
+   3) 本地草稿缓存：预览渲染完成后把整份草稿写进 localStorage，保存到服务器后清掉；
+      后台列表据此给对应条目挂上「恢复 / 丢弃」
    页面里只存在其中之一也能正常工作。
 
    预览默认在浏览器本地渲染（static/js/markdown-local.js），编辑过程不发任何请求，
@@ -427,7 +429,10 @@
 
   /* 把正文渲染到右侧预览栏。默认本地渲染：整篇正文不出浏览器，也没有等待服务器的延迟。
      只有本地渲染不可用（vendor 脚本没加载上）时才退回服务端，那条路径的请求带序号，
-     只有最新一次的结果会生效。 */
+     只有最新一次的结果会生效。
+
+     两条路径都在「预览画完」之后调一次 storeDraft()（见第 3 节）：写缓存跟着预览的节拍走，
+     不必另起一个防抖定时器，也不会每次按键都去动 localStorage。 */
   function renderPreview() {
     if (!preview || !previewVisible) {
       return;
@@ -440,6 +445,7 @@
       if (status && status.classList.contains('is-error')) {
         setStatus('');
       }
+      storeDraft();
       return;
     }
 
@@ -466,6 +472,7 @@
         if (status && status.classList.contains('is-error')) {
           setStatus('');
         }
+        storeDraft();
       })
       .catch(function () {
         if (seq !== previewSeq) {
@@ -1410,4 +1417,488 @@
       });
     }
   );
+
+  /* ------------------------------------------------ 3. 编辑器本地缓存
+
+     编辑器里的改动在点「保存」之前只活在当前页面：误关标签页、刷新、浏览器崩了，
+     写了半天的正文就跟着没了。这里在「预览渲染完成」的那一刻，把整份草稿（表单字段
+     加正文）写进 localStorage，下次打开同一个页面就能捞回来。
+
+     记录按页面路径分开存（/admin/articles/new、/admin/projects/<slug>/edit 各一份），
+     互相不覆盖。内容一旦落到服务器就删掉——那时它已经是正式内容，再留一份本地副本
+     只会让人分不清哪份是新的。
+
+     三个时机：
+       写 —— 预览渲染完成后（跟预览同一个节拍，见 renderPreview）；与打开页面时的那份
+             一致就不写，改回原样还会把记录删掉，所以「动过才留痕迹」。
+       删 —— 保存成功（后端重定向回来带着 flash-ok，见 flushClearedDrafts）、在提示条
+             或后台列表上点「丢弃」、记录过期。
+       读 —— 打开编辑页时记录与服务器内容不同，就在页顶提示「恢复 / 不用了」；从后台
+             列表点「恢复」进来（?restore=1）则直接套用，不再问。
+
+     只存在浏览器里，且不带过期时间以外的清理：同一台机器上的另一个浏览器看不到，
+     换台机器也看不到——它是「这一份的兜底」，不是同步方案。 */
+
+  var DRAFT_PREFIX = 'editor-cache:';            // 键前缀 + 页面路径
+  var DRAFT_VERSION = 1;
+  var DRAFT_MAX_AGE = 7 * 24 * 60 * 60 * 1000;   // 一星期没动过的记录顺手丢掉
+  var CLEAR_KEY = 'editor-clear';                // sessionStorage：提交后等着核销的记录
+  var CLEAR_MAX_AGE = 5 * 60 * 1000;
+
+  var draftBaseline = null; // 打开页面时那份草稿的指纹，用来判断「有没有改过」
+
+  /* localStorage 在隐身模式等场景下取用就可能抛异常，取值、写入也各要兜一层。 */
+  function localStore() {
+    try {
+      return window.localStorage;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function readDraft(path) {
+    var store = localStore();
+    if (!store) {
+      return null;
+    }
+    try {
+      var raw = store.getItem(DRAFT_PREFIX + path);
+      var data = raw ? JSON.parse(raw) : null;
+      // 记录里必须有字段表和正文，否则当作坏记录，交给 eachDraft 清掉
+      return data && data.fields && typeof data.body === 'string' ? data : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function writeDraft(path, data) {
+    var store = localStore();
+    if (!store) {
+      return;
+    }
+    try {
+      store.setItem(DRAFT_PREFIX + path, JSON.stringify(data));
+    } catch (error) {
+      /* 配额满或被禁用：缓存写不进去，不影响正在写的内容 */
+    }
+  }
+
+  function dropDraft(path) {
+    var store = localStore();
+    if (!store) {
+      return;
+    }
+    try {
+      store.removeItem(DRAFT_PREFIX + path);
+    } catch (error) {
+      /* 删不掉也没什么可补救的 */
+    }
+  }
+
+  /* 遍历所有记录。遍历途中删键会让 key(i) 错位，所以先把键收集齐再处理。 */
+  function eachDraft(visit) {
+    var store = localStore();
+    if (!store) {
+      return;
+    }
+    var keys = [];
+    try {
+      for (var i = 0; i < store.length; i++) {
+        var key = store.key(i);
+        if (key && key.indexOf(DRAFT_PREFIX) === 0) {
+          keys.push(key);
+        }
+      }
+    } catch (error) {
+      return;
+    }
+    keys.forEach(function (key) {
+      visit(key.slice(DRAFT_PREFIX.length), readDraft(key.slice(DRAFT_PREFIX.length)));
+    });
+  }
+
+  /* 「多久以前」按粗粒度说：本地缓存只关心「是不是刚存的那份」。 */
+  function timeAgo(at) {
+    var minutes = Math.round((Date.now() - at) / 60000);
+    if (!(minutes > 0)) {
+      return '刚刚';
+    }
+    if (minutes < 60) {
+      return minutes + ' 分钟前';
+    }
+    var hours = Math.round(minutes / 60);
+    if (hours < 24) {
+      return hours + ' 小时前';
+    }
+    return Math.round(hours / 24) + ' 天前';
+  }
+
+  /* -------------------------------------------- 3.1 编辑页 */
+
+  /* 除正文外的所有字段：勾选框存布尔，其余存字符串。空值也照存，
+     否则「把摘要清空」这种改动还原不出来。 */
+  function collectFields() {
+    var fields = {};
+    if (!editorForm) {
+      return fields;
+    }
+    Array.prototype.forEach.call(editorForm.elements, function (field) {
+      var name = field.name;
+      if (!name || name === 'csrf_token' || name === 'body' || field.type === 'file') {
+        return;
+      }
+      if (field.type === 'submit' || field.type === 'button' || field.type === 'reset') {
+        return;
+      }
+      fields[name] = field.type === 'checkbox' ? field.checked : field.value;
+    });
+    return fields;
+  }
+
+  function draftState() {
+    return { fields: collectFields(), body: textarea.value };
+  }
+
+  /* 指纹按表单里的顺序序列化，同一份内容每次得到同一个字符串。 */
+  function stateSignature(state) {
+    return JSON.stringify([state.fields, state.body]);
+  }
+
+  function draftKind() {
+    return location.pathname.indexOf('/projects/') !== -1 ? 'project' : 'article';
+  }
+
+  function draftTitle() {
+    var title = formField('title');
+    var text = title ? title.value.trim() : '';
+    if (text) {
+      return text;
+    }
+    var slug = formField('slug');
+    return (slug && slug.value.trim()) || '（未命名）';
+  }
+
+  /* 预览渲染完成后调用。与打开页面时一致就删掉记录：那种情况下缓存里的内容和
+     服务器上的没有区别，留着只会在后台列表上多出一个没有意义的小红点。 */
+  function storeDraft() {
+    if (draftBaseline === null) {
+      return; // 不是编辑页：没有「打开时的那份」可比，也就无从判断改没改
+    }
+    var state = draftState();
+    if (stateSignature(state) === draftBaseline) {
+      dropDraft(location.pathname);
+      return;
+    }
+    writeDraft(location.pathname, {
+      v: DRAFT_VERSION,
+      at: Date.now(),
+      kind: draftKind(),
+      title: draftTitle(),
+      fields: state.fields,
+      body: state.body
+    });
+  }
+
+  /* 把草稿放回表单：字段逐个覆盖（空值也覆盖），正文整篇换掉。 */
+  function restoreDraft(data) {
+    Array.prototype.forEach.call(editorForm.elements, function (field) {
+      var name = field.name;
+      if (!name || !(name in data.fields) || name === 'body' || field.type === 'file') {
+        return;
+      }
+      if (field.type === 'submit' || field.type === 'button' || field.type === 'reset') {
+        return;
+      }
+      if (field.type === 'checkbox') {
+        field.checked = Boolean(data.fields[name]);
+        return;
+      }
+      field.value = String(data.fields[name] == null ? '' : data.fields[name]);
+    });
+    replaceRange(0, textarea.value.length, data.body, 0, 0);
+  }
+
+  /* -------------------------------------------- 3.2 编辑页顶部的提示条
+
+     提示条本身写在 admin/base.html 里（flash 提示下面），这里只负责填内容。
+     按钮是当场建的：不进 HTML 就不会在没缓存的页面上留下空壳。 */
+
+  var notice = document.querySelector('[data-draft-notice]');
+
+  function dismissNotice() {
+    if (!notice) {
+      return;
+    }
+    notice.textContent = '';
+    notice.hidden = true;
+  }
+
+  function showNoticeLine(text) {
+    if (!notice) {
+      return;
+    }
+    notice.textContent = '';
+    var line = document.createElement('span');
+    line.className = 'draft-notice-text';
+    line.textContent = text;
+    notice.appendChild(line);
+    notice.hidden = false;
+  }
+
+  function showDraftNotice(data) {
+    if (!notice) {
+      return;
+    }
+    notice.textContent = '';
+
+    var line = document.createElement('span');
+    line.className = 'draft-notice-text';
+    line.textContent = '这个浏览器里存着 ' + timeAgo(data.at) + '的本地草稿「' + data.title +
+      '」（' + data.body.length + ' 字），服务器上还没有这份改动。';
+
+    var restore = document.createElement('button');
+    restore.type = 'button';
+    restore.className = 'button button-small';
+    restore.textContent = '恢复草稿';
+    restore.addEventListener('click', function () {
+      restoreDraft(data);
+      setStatus('已恢复 ' + timeAgo(data.at) + '的本地草稿，保存后会同步到服务器');
+      showNoticeLine('已恢复本地草稿「' + data.title + '」——它还没有保存到服务器。');
+    });
+
+    /* 「不用了」只删记录，不动页面上的内容：页面上本来就是服务器上的那份。
+       真要回到服务器版本，刷新一下就行（刷新后提示条会再出现一次，可以再点「不用了」）。 */
+    var discard = document.createElement('button');
+    discard.type = 'button';
+    discard.className = 'button button-small button-ghost';
+    discard.textContent = '不用了';
+    discard.title = '删除这份本地缓存，页面内容不动';
+    discard.addEventListener('click', function () {
+      dropDraft(location.pathname);
+      dismissNotice();
+      setStatus('已删除本地草稿');
+    });
+
+    notice.appendChild(line);
+    notice.appendChild(restore);
+    notice.appendChild(discard);
+    notice.hidden = false;
+  }
+
+  /* -------------------------------------------- 3.3 提交后的核销 */
+
+  /* 保存走的是原生提交（POST → 302 → GET），这条路径里没有「服务器已经写好了」的
+     回执可读。退一步用回来那一页上的 flash 判断：重定向前把当前路径记进
+     sessionStorage，回到后台看到成功提示（.flash-ok）就把那份记录删掉。保存失败会带
+     flash-error 回来，那时记录继续留在本地，提示条也还在，没写完的东西不会丢。 */
+  function rememberClear() {
+    try {
+      window.sessionStorage.setItem(CLEAR_KEY, JSON.stringify({
+        at: Date.now(),
+        paths: [location.pathname] // 改了 slug 就是换了路径，删的是提交前那份
+      }));
+    } catch (error) {
+      /* 记不住就退化成「保存成功后由编辑页自己对账」（见 initDrafts） */
+    }
+  }
+
+  function flushClearedDrafts() {
+    var raw = null;
+    try {
+      raw = window.sessionStorage.getItem(CLEAR_KEY);
+      window.sessionStorage.removeItem(CLEAR_KEY);
+    } catch (error) {
+      return;
+    }
+    if (!raw) {
+      return;
+    }
+    var record = null;
+    try {
+      record = JSON.parse(raw);
+    } catch (error) {
+      return;
+    }
+    // 只在带成功提示的那一页核销，且认「刚刚提交的」那一份
+    if (!record || !(Date.now() - (record.at || 0) <= CLEAR_MAX_AGE)) {
+      return;
+    }
+    if (!document.querySelector('.flash-ok')) {
+      return;
+    }
+    (record.paths || []).forEach(dropDraft);
+  }
+
+  /* 过期记录清掉，免得攒下一堆早就不用的草稿。 */
+  function pruneDrafts() {
+    var now = Date.now();
+    eachDraft(function (path, data) {
+      if (!data || typeof data.at !== 'number' || now - data.at > DRAFT_MAX_AGE) {
+        dropDraft(path);
+      }
+    });
+  }
+
+  /* -------------------------------------------- 3.4 后台列表 */
+
+  /* 列表页的两个容器：一排「本地草稿」记录单列一节的地方，见 dashboard.html */
+  var draftSection = document.querySelector('[data-draft-section]');
+  var draftList = document.querySelector('[data-draft-list]');
+
+  /* 后台内容列表：给有本地草稿的条目挂上标记与「恢复 / 丢弃」。
+     标记就放在操作列里，用的是行上的 data-cache-path（编辑页地址）当记录键。 */
+  function paintRowDraft(slot, path, data) {
+    slot.textContent = '';
+    slot.hidden = false;
+
+    var badge = document.createElement('span');
+    badge.className = 'badge badge-local';
+    badge.textContent = '本地草稿 · ' + timeAgo(data.at);
+    badge.title = '这个浏览器里还存着「' + data.title + '」的未保存改动';
+
+    var restore = document.createElement('a');
+    restore.className = 'link-more';
+    restore.href = path + '?restore=1';
+    restore.textContent = '恢复';
+    restore.title = '打开编辑页并套用这份草稿';
+
+    var drop = document.createElement('button');
+    drop.type = 'button';
+    drop.className = 'link-button link-danger';
+    drop.textContent = '丢弃';
+    drop.title = '删除这份本地缓存，服务器上的内容不动';
+    drop.addEventListener('click', function () {
+      dropDraft(path);
+      slot.textContent = '';
+      slot.hidden = true;
+    });
+
+    slot.appendChild(badge);
+    slot.appendChild(restore);
+    slot.appendChild(drop);
+  }
+
+  /* 新建页的缓存没有对应的行可挂（那条内容还没建出来），单列一节，
+     按「继续编辑」回去即可。 */
+  function draftItem(item) {
+    var li = document.createElement('li');
+    li.className = 'draft-item';
+
+    var title = document.createElement('span');
+    title.className = 'draft-item-title';
+    title.textContent = item.data.title;
+
+    var meta = document.createElement('span');
+    meta.className = 'muted';
+    meta.textContent = (item.data.kind === 'project' ? '项目' : '文章') +
+      ' · 保存于 ' + timeAgo(item.data.at) + ' · ' + item.data.body.length + ' 字';
+
+    var actions = document.createElement('span');
+    actions.className = 'draft-item-actions';
+
+    var resume = document.createElement('a');
+    resume.className = 'link-more';
+    resume.href = item.path + '?restore=1';
+    resume.textContent = '继续编辑';
+
+    var drop = document.createElement('button');
+    drop.type = 'button';
+    drop.className = 'link-button link-danger';
+    drop.textContent = '丢弃';
+    drop.addEventListener('click', function () {
+      dropDraft(item.path);
+      li.remove();
+      if (!draftList.firstChild) {
+        draftSection.hidden = true;
+      }
+    });
+
+    actions.appendChild(resume);
+    actions.appendChild(drop);
+    li.appendChild(title);
+    li.appendChild(meta);
+    li.appendChild(actions);
+    return li;
+  }
+
+  function initDashboardDrafts() {
+    var rows = Array.prototype.slice.call(document.querySelectorAll('[data-cache-path]'));
+    if (!rows.length && !draftList) {
+      return; // 不是内容列表页
+    }
+
+    var attached = {};
+    rows.forEach(function (row) {
+      var path = row.getAttribute('data-cache-path');
+      var slot = row.querySelector('[data-draft-slot]');
+      var data = path ? readDraft(path) : null;
+      if (!slot || !data) {
+        return;
+      }
+      attached[path] = true; // 这条记录的「主人」还在，不必列进下面那一节
+      paintRowDraft(slot, path, data);
+    });
+
+    if (!draftSection || !draftList) {
+      return;
+    }
+
+    var orphans = [];
+    eachDraft(function (path, data) {
+      if (!data) {
+        dropDraft(path); // 坏记录：解析不出来，留着也没用
+        return;
+      }
+      if (!attached[path]) {
+        orphans.push({ path: path, data: data });
+      }
+    });
+
+    if (!orphans.length) {
+      draftSection.hidden = true;
+      return;
+    }
+
+    draftList.textContent = '';
+    orphans.sort(function (left, right) {
+      return right.data.at - left.data.at; // 最近动过的排前面
+    });
+    orphans.forEach(function (item) {
+      draftList.appendChild(draftItem(item));
+    });
+    draftSection.hidden = false;
+  }
+
+  /* -------------------------------------------- 3.5 入口 */
+
+  /* 保存成功后要核销、过期记录要清理，这两件事在任何后台页面都得做一遍
+     （新建文章保存完是跳回列表的，不在编辑页）。 */
+  flushClearedDrafts();
+  pruneDrafts();
+
+  if (editorForm && textarea) {
+    editorForm.addEventListener('submit', rememberClear);
+
+    // 打开页面时的那份内容：之后写不写缓存、要不要提示，都拿它当基准
+    draftBaseline = stateSignature(draftState());
+
+    var stored = readDraft(location.pathname);
+    if (stored) {
+      if (stateSignature({ fields: stored.fields, body: stored.body }) === draftBaseline) {
+        dropDraft(location.pathname); // 服务器上就是这份，记录可以扔了
+      } else if (/(?:^|[?&])restore=1(?:&|$)/.test(location.search)) {
+        // 从列表点「恢复」进来：直接套用，并把参数摘掉（刷新时不再自动套一遍）
+        restoreDraft(stored);
+        if (window.history.replaceState) {
+          window.history.replaceState(null, '', location.pathname);
+        }
+        showNoticeLine('已恢复本地草稿「' + stored.title + '」（' + timeAgo(stored.at) +
+          '保存）——它还没有保存到服务器。');
+      } else {
+        showDraftNotice(stored);
+      }
+    }
+  } else {
+    initDashboardDrafts();
+  }
 })();

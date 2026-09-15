@@ -26,10 +26,13 @@
         </thead>
         <tbody>
           {% for article in articles %}
-            <tr>
+            {# data-cache-path：这一行的编辑页地址，admin.js 拿它当本地草稿的键 #}
+            <tr data-cache-path="{{ url_for('admin.article_edit', slug=article.slug) }}">
               <td>
                 <a href="{{ article.url }}" target="_blank" rel="noopener">{{ article.title }}</a>
                 <span class="muted">/{{ article.slug }}</span>
+                {# 本地草稿的标记与「恢复 / 丢弃」由 admin.js 填进来，没有缓存时保持 hidden #}
+                <span class="draft-slot" data-draft-slot hidden></span>
               </td>
               <td class="nowrap"><span class="muted">{{ article.collection }}</span></td>
               <td class="nowrap">{{ article.date.isoformat() }}</td>
@@ -65,10 +68,13 @@
         </thead>
         <tbody>
           {% for project in projects %}
-            <tr>
+            {# data-cache-path：同上，这一行的编辑页地址 #}
+            <tr data-cache-path="{{ url_for('admin.project_edit', slug=project.slug) }}">
               <td>
                 <a href="{{ project.url }}" target="_blank" rel="noopener">{{ project.title }}</a>
                 <span class="muted">/{{ project.slug }}</span>
+                {# 同上：本地草稿的标记与操作 #}
+                <span class="draft-slot" data-draft-slot hidden></span>
               </td>
               <td class="nowrap">{{ project.status }}</td>
               <td class="nowrap">{{ project.order }}</td>
@@ -89,5 +95,15 @@
     {% else %}
       <p class="empty-state">还没有项目。</p>
     {% endif %}
+  </section>
+
+  {# 浏览器里存着的本地草稿：各行的标记由 admin.js 直接挂到上面两张表里，
+     这里只列出「还没有对应内容」的那些（在新建页写的草稿）。
+     内容与操作都由 admin.js 生成，没有缓存时整节保持 hidden。 #}
+  <section class="section" data-draft-section hidden>
+    <div class="section-head">
+      <h2 class="section-title">浏览器里的未保存草稿</h2>
+    </div>
+    <ul class="draft-list" data-draft-list></ul>
   </section>
 {% endblock %}
