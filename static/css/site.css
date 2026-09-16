@@ -864,6 +864,20 @@ body:has(.preview-bar) .site-header {
   font-size: 0.85rem;
 }
 
+/* 后台表格下方的分页条：紧贴表格，不用公开列表页那样的大留白。
+   上一层边框也去掉——表格最后一行的 border-bottom 已经在同一位置画过了。 */
+.pagination-table {
+  margin-top: 0;
+  padding-top: 14px;
+  border-top: none;
+}
+
+/* 从分页链接跳到 #articles / #projects 时，别让标题钻到吸顶的站点页头下面 */
+.admin #articles,
+.admin #projects {
+  scroll-margin-top: calc(var(--header-h) + 16px);
+}
+
 /* --------------------------------------------------------------------------
    10. 正文排版
    -------------------------------------------------------------------------- */

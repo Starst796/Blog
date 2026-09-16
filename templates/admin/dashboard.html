@@ -2,6 +2,29 @@
 
 {% block title %}内容管理 · {{ site.name }}{% endblock %}
 
+{# 后台表格的分页条。两张表各用各的页码参数（page / project_page），翻一张时要把
+   另一张的页码一并带上，否则会把对方重置回第 1 页——prev_url / next_url 由调用方
+   直接拼好传进来，比在这里拼一堆可变关键字参数清楚。 #}
+{% macro pager(page, total_pages, prev_url, next_url, status) %}
+  {% if total_pages > 1 %}
+    <nav class="pagination pagination-table" aria-label="分页">
+      {% if page > 1 %}
+        <a class="page-link" href="{{ prev_url }}">← 上一页</a>
+      {% else %}
+        <span class="page-link is-disabled">← 上一页</span>
+      {% endif %}
+
+      <span class="page-status">{{ status }}</span>
+
+      {% if page < total_pages %}
+        <a class="page-link" href="{{ next_url }}">下一页 →</a>
+      {% else %}
+        <span class="page-link is-disabled">下一页 →</span>
+      {% endif %}
+    </nav>
+  {% endif %}
+{% endmacro %}
+
 {% block admin_content %}
   <section class="admin-stats">
     <div class="stat"><span class="stat-value">{{ stats.articles }}</span><span class="stat-label">文章</span></div>
@@ -13,7 +36,7 @@
     <div class="stat"><span class="stat-value">{{ stats.tags }}</span><span class="stat-label">标签</span></div>
   </section>
 
-  <section class="section">
+  <section class="section" id="articles">
     <div class="section-head">
       <h2 class="section-title">文章</h2>
       <a class="button button-small" href="{{ url_for('admin.article_new') }}">写新文章</a>
@@ -43,6 +66,9 @@
                       action="{{ url_for('admin.article_delete', slug=article.slug) }}"
                       data-confirm="确定删除文章「{{ article.title }}」？此操作不可撤销。">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  {# 带上当前页码，删完回到这一页而不是第 1 页 #}
+                  <input type="hidden" name="page" value="{{ article_page }}">
+                  <input type="hidden" name="project_page" value="{{ project_page }}">
                   <button class="link-button link-danger" type="submit">删除</button>
                 </form>
               </td>
@@ -50,12 +76,21 @@
           {% endfor %}
         </tbody>
       </table>
+
+      {{ pager(
+           article_page,
+           article_pages,
+           url_for('admin.dashboard', page=article_page - 1,
+                   project_page=project_page if project_page > 1 else None, _anchor='articles'),
+           url_for('admin.dashboard', page=article_page + 1,
+                   project_page=project_page if project_page > 1 else None, _anchor='articles'),
+           '第 ' ~ article_page ~ ' / ' ~ article_pages ~ ' 页 · 共 ' ~ article_total ~ ' 篇') }}
     {% else %}
       <p class="empty-state">还没有文章，点击「写新文章」开始。</p>
     {% endif %}
   </section>
 
-  <section class="section">
+  <section class="section" id="projects">
     <div class="section-head">
       <h2 class="section-title">项目</h2>
       <a class="button button-small" href="{{ url_for('admin.project_new') }}">新建项目</a>
@@ -85,6 +120,9 @@
                       action="{{ url_for('admin.project_delete', slug=project.slug) }}"
                       data-confirm="确定删除项目「{{ project.title }}」？此操作不可撤销。">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  {# 同上：两张表的页码都带上，删除后原地返回 #}
+                  <input type="hidden" name="page" value="{{ article_page }}">
+                  <input type="hidden" name="project_page" value="{{ project_page }}">
                   <button class="link-button link-danger" type="submit">删除</button>
                 </form>
               </td>
@@ -92,13 +130,23 @@
           {% endfor %}
         </tbody>
       </table>
+
+      {{ pager(
+           project_page,
+           project_pages,
+           url_for('admin.dashboard', project_page=project_page - 1,
+                   page=article_page if article_page > 1 else None, _anchor='projects'),
+           url_for('admin.dashboard', project_page=project_page + 1,
+                   page=article_page if article_page > 1 else None, _anchor='projects'),
+           '第 ' ~ project_page ~ ' / ' ~ project_pages ~ ' 页 · 共 ' ~ project_total ~ ' 个') }}
     {% else %}
       <p class="empty-state">还没有项目。</p>
     {% endif %}
   </section>
 
   {# 浏览器里存着的本地草稿：各行的标记由 admin.js 直接挂到上面两张表里，
-     这里只列出「还没有对应内容」的那些（在新建页写的草稿）。
+     这里只列出「当前页没有对应行」的那些——既包括在新建页写的、内容还没建出来的，
+     也包括内容在别的分页上的（列表分页后一张表只渲染当前页的行）。
      内容与操作都由 admin.js 生成，没有缓存时整节保持 hidden。 #}
   <section class="section" data-draft-section hidden>
     <div class="section-head">

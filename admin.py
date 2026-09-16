@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hmac
 import logging
+import math
 import re
 import secrets
 import time
@@ -49,6 +50,10 @@ _login_failures: dict[str, deque[float]] = defaultdict(deque)
 
 _WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 _TAG_SPLIT_RE = re.compile(r"[,，;；]")
+
+# 仪表盘两张表的每页条数：文章条目多、字段少，项目则相反
+DASHBOARD_ARTICLES_PER_PAGE = 10
+DASHBOARD_PROJECTS_PER_PAGE = 5
 
 
 # --------------------------------------------------------------------- 基础工具
@@ -224,15 +229,56 @@ def toggle_preview_mode():
 # --------------------------------------------------------------------- 仪表盘
 
 
+def _page_number(name: str, total_pages: int) -> int:
+    """读取页码并夹到 ``1..total_pages``，非数字一律当作第 1 页。"""
+    return min(max(request.args.get(name, type=int) or 1, 1), total_pages)
+
+
 @bp.get("")
 @bp.get("/")
 @login_required
 def dashboard():
+    """内容列表。两张表各自分页，页码分别存在 ``page`` 与 ``project_page`` 里。"""
+    article_total = content.count_articles(include_drafts=True)
+    project_total = len(content.list_projects())
+
+    article_pages = max(1, math.ceil(article_total / DASHBOARD_ARTICLES_PER_PAGE))
+    project_pages = max(1, math.ceil(project_total / DASHBOARD_PROJECTS_PER_PAGE))
+    # 页码越界（手改地址栏，或删完最后一页的内容）一律夹回末页，避免出现空表
+    article_page = _page_number("page", article_pages)
+    project_page = _page_number("project_page", project_pages)
+
+    article_offset = (article_page - 1) * DASHBOARD_ARTICLES_PER_PAGE
+    project_offset = (project_page - 1) * DASHBOARD_PROJECTS_PER_PAGE
+
     return render_template(
         "admin/dashboard.html",
         stats=content.stats(),
-        articles=content.list_articles(include_drafts=True),
-        projects=content.list_projects(),
+        articles=content.list_articles(
+            include_drafts=True, limit=DASHBOARD_ARTICLES_PER_PAGE, offset=article_offset
+        ),
+        article_page=article_page,
+        article_pages=article_pages,
+        article_total=article_total,
+        projects=content.list_projects()[
+            project_offset : project_offset + DASHBOARD_PROJECTS_PER_PAGE
+        ],
+        project_page=project_page,
+        project_pages=project_pages,
+        project_total=project_total,
+    )
+
+
+def _dashboard_redirect() -> str:
+    """删除后回到刚才那一页，而不是跳回第 1 页。
+
+    页码来自删除表单里的隐藏字段；越界的页码由 ``dashboard()`` 夹回末页，
+    所以删掉末页最后一条时不会停在一个空列表上。
+    """
+    return url_for(
+        "admin.dashboard",
+        page=request.form.get("page", type=int) or None,
+        project_page=request.form.get("project_page", type=int) or None,
     )
 
 
@@ -400,7 +446,7 @@ def article_delete(slug: str):
         flash(f"文章 {slug} 已删除。", "ok")
     else:
         flash("未找到该文章。", "error")
-    return redirect(url_for("admin.dashboard"))
+    return redirect(_dashboard_redirect())
 
 
 # --------------------------------------------------------------------- 项目
@@ -516,7 +562,7 @@ def project_delete(slug: str):
         flash(f"项目 {slug} 已删除。", "ok")
     else:
         flash("未找到该项目。", "error")
-    return redirect(url_for("admin.dashboard"))
+    return redirect(_dashboard_redirect())
 
 
 # --------------------------------------------------------------------- 站点信息
