@@ -36,9 +36,9 @@
       </label>
 
       <label class="field">
-        <span class="field-label">日期</span>
-        <input class="input" type="date" name="date"
-               value="{{ form.get('date') if 'date' in form else today }}">
+        <span class="field-label">标签 <span class="field-hint">逗号分隔</span></span>
+        <input class="input" type="text" name="tags"
+               value="{{ form.get('tags') if 'tags' in form else (article.tags | join(', ') if article else '') }}">
       </label>
 
       <label class="field field-wide">
@@ -48,9 +48,15 @@
       </label>
 
       <label class="field">
-        <span class="field-label">标签 <span class="field-hint">逗号分隔</span></span>
-        <input class="input" type="text" name="tags"
-               value="{{ form.get('tags') if 'tags' in form else (article.tags | join(', ') if article else '') }}">
+        <span class="field-label">日期</span>
+        <input class="input" type="date" name="date"
+               value="{{ form.get('date') if 'date' in form else today }}">
+      </label>
+
+      <label class="field">
+        <span class="field-label">时刻 <span class="field-hint">新建默认取此刻</span></span>
+        <input class="input" type="time" name="time" step="60"
+               value="{{ form.get('time') if 'time' in form else default_time }}">
       </label>
 
       <label class="field">

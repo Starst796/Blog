@@ -38,9 +38,10 @@
 
 {% macro article_row(article, show_summary=true, show_collection=false) %}
   <article class="entry">
-    <time class="entry-date" datetime="{{ article.date.isoformat() }}">
+    <time class="entry-date" datetime="{{ article.published.isoformat() }}">
       <span class="entry-year">{{ article.date.year }}</span>
       <span class="entry-md">{{ '%02d.%02d'|format(article.date.month, article.date.day) }}</span>
+      <span class="entry-hm">{{ '%02d:%02d'|format(article.time.hour, article.time.minute) }}</span>
     </time>
 
     <div class="entry-main">

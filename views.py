@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from datetime import date
+from datetime import date, datetime, time
 
 from flask import (
     Flask,
@@ -190,10 +190,14 @@ def sitemap():
 @bp.get("/atom.xml")
 def atom():
     articles = content.list_articles(limit=20)
-    stamp = articles[0].date if articles else date.today()
+    # 订阅源顶层的 <updated> 取全部条目中最新的修订时刻，没有文章时退回今天零点
+    updated = max(
+        (item.modified for item in articles),
+        default=datetime.combine(date.today(), time.min),
+    )
     offset = current_app.config["SITE_TZ_OFFSET"]
     return Response(
-        render_template("atom.xml", articles=articles, updated=f"{stamp.isoformat()}T00:00:00{offset}"),
+        render_template("atom.xml", articles=articles, updated=f"{updated.isoformat()}{offset}"),
         mimetype="application/atom+xml",
     )
 

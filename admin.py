@@ -19,6 +19,7 @@ import secrets
 import time
 from collections import defaultdict, deque
 from datetime import date, datetime
+from datetime import time as dt_time
 from functools import wraps
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -238,7 +239,8 @@ def dashboard():
 # --------------------------------------------------------------------- 文章
 
 
-def _read_article_form() -> tuple[dict, str, list[str]]:
+def _read_article_form(default_time: dt_time) -> tuple[dict, str, list[str]]:
+    """从表单读取文章字段。``default_time`` 在用户未填时刻时兜底。"""
     form = request.form
     errors: list[str] = []
 
@@ -253,9 +255,32 @@ def _read_article_form() -> tuple[dict, str, list[str]]:
         errors.append("日期格式应为 YYYY-MM-DD。")
         published = date.today()
 
+    # <input type="time"> 提交的是 HH:MM（或带秒的 HH:MM:SS），两种都接受。
+    raw_time = (form.get("time") or "").strip()
+    published_time = default_time
+    if raw_time:
+        for fmt in ("%H:%M:%S", "%H:%M"):
+            try:
+                published_time = datetime.strptime(raw_time, fmt).time()
+                break
+            except ValueError:
+                continue
+        else:
+            errors.append("时刻格式应为 HH:MM。")
+
     metadata: dict = {
         "title": title,
         "date": published,
+        # 必须写成字符串：PyYAML 无法序列化 datetime.time（dumps 会直接抛
+        # RepresenterError）。写成 "14:32" 时 PyYAML 会自动加引号，避免它被
+        # 解析成六十进制整数（见 content._parse_time）。
+        # 00:00 是「未指定时刻」的默认值，与缺失 time 字段等价，因此不写进
+        # front matter，保持老文章的文件内容不被无意义地改动（同 collection）。
+        **(
+            {}
+            if published_time == dt_time(0, 0)
+            else {"time": published_time.strftime("%H:%M")}
+        ),
         "tags": [part.strip() for part in _TAG_SPLIT_RE.split(form.get("tags") or "") if part.strip()],
         "draft": form.get("draft") == "on",
         # 敏感内容即使取消草稿也不会对外输出，用于存放密钥、凭据一类文本
@@ -282,8 +307,11 @@ def _read_article_form() -> tuple[dict, str, list[str]]:
 @bp.route("/articles/new", methods=["GET", "POST"])
 @login_required
 def article_new():
+    # 新建文章的默认时刻 = 此刻（取整到分钟），也就是「创建时时间」
+    created_at = datetime.now().time().replace(second=0, microsecond=0)
+
     if request.method == "POST":
-        metadata, body, errors = _read_article_form()
+        metadata, body, errors = _read_article_form(created_at)
         base = content.slugify(
             request.form.get("slug") or metadata.get("title", ""),
             fallback=f"post-{date.today():%Y%m%d}",
@@ -299,6 +327,7 @@ def article_new():
                 form=request.form,
                 default_slug=base,
                 today=date.today().isoformat(),
+                default_time=created_at.strftime("%H:%M"),
             )
 
         content.ContentWriter().write_article(slug, metadata, body)
@@ -312,6 +341,7 @@ def article_new():
         form={},
         default_slug="",
         today=date.today().isoformat(),
+        default_time=created_at.strftime("%H:%M"),
     )
 
 
@@ -323,7 +353,7 @@ def article_edit(slug: str):
         abort(404)
 
     if request.method == "POST":
-        metadata, body, errors = _read_article_form()
+        metadata, body, errors = _read_article_form(article.time)
         wanted = content.slugify(request.form.get("slug") or slug, fallback=slug)
 
         if wanted != slug and (content.content_dir() / "articles" / f"{wanted}.md").exists():
@@ -338,6 +368,7 @@ def article_edit(slug: str):
                 form=request.form,
                 default_slug=wanted,
                 today=article.date.isoformat(),
+                default_time=article.time.strftime("%H:%M"),
             )
 
         writer = content.ContentWriter()
@@ -357,6 +388,7 @@ def article_edit(slug: str):
         form={},
         default_slug=article.slug,
         today=article.date.isoformat(),
+        default_time=article.time.strftime("%H:%M"),
     )
 
 

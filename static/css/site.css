@@ -614,6 +614,11 @@ body:has(.preview-bar) .site-header {
   color: var(--fg-muted);
 }
 
+.entry-hm {
+  font-size: 0.75rem;
+  color: var(--fg-faint);
+}
+
 .entry-main {
   min-width: 0;
 }

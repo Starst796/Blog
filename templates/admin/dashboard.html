@@ -22,7 +22,7 @@
     {% if articles %}
       <table class="table">
         <thead>
-          <tr><th>标题</th><th>文集</th><th>日期</th><th>状态</th><th class="col-actions">操作</th></tr>
+          <tr><th>标题</th><th>文集</th><th>发布时间</th><th>状态</th><th class="col-actions">操作</th></tr>
         </thead>
         <tbody>
           {% for article in articles %}
@@ -35,7 +35,7 @@
                 <span class="draft-slot" data-draft-slot hidden></span>
               </td>
               <td class="nowrap"><span class="muted">{{ article.collection }}</span></td>
-              <td class="nowrap">{{ article.date.isoformat() }}</td>
+              <td class="nowrap">{{ article.date.isoformat() }} {{ '%02d:%02d'|format(article.time.hour, article.time.minute) }}</td>
               <td>{% if article.sensitive %}<span class="badge badge-sensitive">敏感 · 不输出</span>{% elif article.draft %}<span class="badge badge-draft">草稿</span>{% else %}<span class="badge">已发布</span>{% endif %}</td>
               <td class="col-actions">
                 <a class="link-more" href="{{ url_for('admin.article_edit', slug=article.slug) }}">编辑</a>

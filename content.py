@@ -25,7 +25,7 @@ import re
 import subprocess
 import threading
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any
 
@@ -171,6 +171,39 @@ def _parse_date(value: Any, fallback: date | None = None) -> date:
     return fallback or date.today()
 
 
+def _parse_time(value: Any, fallback: time | None = None) -> time:
+    """解析 front matter 中的 ``time``，无法识别时退回 ``fallback``（默认 00:00）。
+
+    兼容 ``HH:MM``、``HH:MM:SS`` 与 ``HH:MM:SS.ffffff``。早期文章没有 ``time``
+    字段，一律按 00:00 处理。
+
+    注意 YAML 1.1 的「六十进制整数」：裸写的 ``12:30`` 会被 PyYAML 解析成整数
+    ``750``（``09:30`` 因为首位是 0 反而仍是字符串），因此这里额外把整数按
+    ``H*3600 + M*60 + S`` 还原，并提醒作者加引号——后台保存时写出的字符串
+    会被 PyYAML 自动加引号，不受此影响。
+    """
+    if isinstance(value, datetime):
+        return value.time()
+    if isinstance(value, time):
+        return value
+    if isinstance(value, str):
+        raw = value.strip()
+        for fmt in ("%H:%M:%S.%f", "%H:%M:%S", "%H:%M", "%H%M%S", "%H%M"):
+            try:
+                return datetime.strptime(raw, fmt).time()
+            except ValueError:
+                continue
+    elif isinstance(value, int) and not isinstance(value, bool) and 0 <= value < 86400:
+        logger.warning(
+            "文章 front matter 的 time 被 YAML 当成六十进制整数 %s，已按 %s 解释；"
+            "建议写成带引号的 \"HH:MM\"",
+            value,
+            f"{value // 3600:02d}:{value % 3600 // 60:02d}:{value % 60:02d}",
+        )
+        return time(value // 3600, value % 3600 // 60, value % 60)
+    return fallback or time(0, 0)
+
+
 def _parse_str_list(value: Any) -> list[str]:
     """兼容 ``tags: [a, b]``、``tags: a, b`` 与 ``tags: a`` 三种写法。"""
     if value is None:
@@ -229,6 +262,7 @@ class Article:
     slug: str
     title: str
     date: date
+    time: time
     updated: date | None
     summary: str
     collection: str
@@ -245,6 +279,18 @@ class Article:
     @property
     def url(self) -> str:
         return f"/articles/{self.slug}"
+
+    @property
+    def published(self) -> datetime:
+        """日期与时刻合并后的发布时刻，供排序与订阅源使用。"""
+        return datetime.combine(self.date, self.time)
+
+    @property
+    def modified(self) -> datetime:
+        """最后修订时刻。没有 ``updated`` 字段时等同于发布时间。"""
+        if self.updated and self.updated != self.date:
+            return datetime.combine(self.updated, self.time)
+        return self.published
 
     @property
     def year(self) -> int:
@@ -320,12 +366,16 @@ def _load_articles(root: Path) -> dict[str, Article]:
         body = post.content or ""
         html, toc = render(body)
         created = _parse_date(meta.get("date"), fallback=date.fromtimestamp(path.stat().st_mtime))
+        # 缺失 time 的老文章一律按 00:00 处理，不拿文件 mtime 兜底：
+        # mtime 会被「拉取内容仓库」这类与写作无关的操作改掉，反而破坏既有顺序。
+        created_time = _parse_time(meta.get("time"))
         updated_raw = meta.get("updated") or meta.get("modified")
 
         items[slug] = Article(
             slug=slug,
             title=str(meta.get("title") or slug),
             date=created,
+            time=created_time,
             updated=_parse_date(updated_raw) if updated_raw else None,
             summary=_derive_summary(meta, body),
             # 兼容 ``series:`` 这个常见写法，二者等价
@@ -471,7 +521,10 @@ def list_articles(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[Article]:
-    """按发布日期倒序返回文章列表，可按文集与标签筛选。"""
+    """按发布时间（date + time）倒序返回文章列表，可按文集与标签筛选。
+
+    同一时刻的两篇再按 slug 倒序，顺序稳定且可复现。
+    """
     articles = list(_store()["articles"].values())
     if not include_drafts:
         # draft 是「暂时不发布」，sensitive 是「任何情况下都不对外输出」：
@@ -484,7 +537,7 @@ def list_articles(
         needle = tag.strip().lower()
         articles = [item for item in articles if needle in {t.lower() for t in item.tags}]
 
-    articles.sort(key=lambda item: (item.date, item.slug), reverse=True)
+    articles.sort(key=lambda item: (item.published, item.slug), reverse=True)
 
     if offset:
         articles = articles[offset:]
@@ -578,6 +631,7 @@ def stats() -> dict[str, int]:
 ARTICLE_TEMPLATE = """---
 title: {title}
 date: {date}
+time: "{time}"
 summary: {summary}
 collection: 未归档
 tags: []
