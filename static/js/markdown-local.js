@@ -14,6 +14,8 @@
      admonition（!!! note "标题"）       自定义块级规则，输出同样的 div/p 结构
      toc（标题锚点，保留中文）            自定义 core 规则，复刻 slugify_unicode
      pymdownx.tilde（~~删除~~）          markdown-it 的 <s> 改写为 <del>
+     这里多出来的一样：每个顶层块带 data-line / data-line-end（源码行号），
+     只有 admin.js 的滚动联动会读它，正文与线上渲染都不受影响。
 
    已知差异（见文件末尾注释）：列表与上文的空行、代码高亮的细腻程度、属性顺序。
 
@@ -175,6 +177,25 @@
     });
   }
 
+  /* ------------------------------------------------ 源码行号（滚动联动用）
+
+     给每个顶层块标上它在源码里的行号。此前 admin.js 只能拿块首几个字去源码里
+     「认领」起始行，分隔线没有文字、引用块跨多段时块首文字又和单行源码对不上，
+     认领不到就退回上一个块的位置，于是分隔线与后面的段落会错开好几行。
+     markdown-it 的 token.map 本来就知道每个块占哪几行，写上就不用猜了。 */
+  function sourceLinePlugin(md) {
+    md.core.ruler.push('blog_source_lines', function (state) {
+      state.tokens.forEach(function (token) {
+        // 只标顶层块：嵌套块的行号由它所属的顶层块代表
+        if (token.level !== 0 || token.nesting === -1 || !token.map) {
+          return;
+        }
+        token.attrSet('data-line', String(token.map[0]));
+        token.attrSet('data-line-end', String(token.map[1]));
+      });
+    });
+  }
+
   /* ------------------------------------------------ 提示块（admonition）
 
      Python-Markdown 的写法是独占一行的 !!! 类型 "标题"，正文缩进四个空格；
@@ -274,8 +295,9 @@
         '"><a class="footnote-ref" href="#fn:' + label(token) + '">' +
         caption(token) + '</a></sup>';
     };
-    rules.footnote_block_open = function () {
-      return '<div class="footnote">\n<hr>\n<ol>\n';
+    rules.footnote_block_open = function (tokens, idx) {
+      return '<div class="footnote"' + md.renderer.renderAttrs(tokens[idx]) +
+        '>\n<hr>\n<ol>\n';
     };
     rules.footnote_block_close = function () {
       return '</ol>\n</div>\n';
@@ -314,7 +336,15 @@
       var language = info ? info.split(/\s+/)[0] : '';
       var body = highlightBody(token.content, language, md.utils.escapeHtml);
       // <pre><span></span><code> 里的空 span 是 Pygments 自己会补的，位置照抄
-      return '<div class="highlight"><pre><span></span><code>' + body + '</code></pre></div>\n';
+      // 这条规则绕开了默认规则，源码行号要自己带上
+      return '<div class="highlight"' + md.renderer.renderAttrs(token) +
+        '><pre><span></span><code>' + body + '</code></pre></div>\n';
+    };
+
+    // 同理：默认的 hr 规则不输出属性，行号会丢
+    md.renderer.rules.hr = function (tokens, idx, options) {
+      return '<hr' + md.renderer.renderAttrs(tokens[idx]) +
+        (options.xhtmlOut ? ' /' : '') + '>\n';
     };
 
     // pymdownx.tilde 输出 <del>，markdown-it 的删除线是 <s>
@@ -338,6 +368,8 @@
     md.use(headingIdsPlugin);
     md.use(admonitionPlugin);
     md.use(blockAttrListPlugin);
+    // 放最后：上面几个插件建出来的块也要能带上行号
+    md.use(sourceLinePlugin);
     return md;
   }
 

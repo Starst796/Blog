@@ -62,7 +62,6 @@
   var anchors = [];          // [{ e, p, line }]：编辑框像素 ↔ 预览像素，两列都单调递增
   var syncSource = 'editor'; // 最近一次是谁在滚：editor / preview
   var syncLock = null;       // 联动写入对面时的目标值，用来吞掉自己触发的 scroll 事件
-  var previewPadBottom = 0;  // 预览自身的底部内边距，算文末留白时要扣掉
 
   function csrfToken() {
     var field = document.querySelector('input[name="csrf_token"]');
@@ -110,8 +109,9 @@
        lineTops —— 每一行源码在编辑框里的像素位置（含自动换行）。编辑框自己算不出
                    「第 N 行在哪」，于是用一个隐藏标尺：复制编辑框的字体、内边距和
                    宽度，逐行放一个 span，span 的顶边就是该行位置。
-       anchors  —— 预览顶层块 ↔ 源码行。按文档顺序做一次单调的文本比对，
-                   图片、分隔线这类没有文字的元素沿用上一处位置。
+       anchors  —— 预览顶层块 ↔ 源码行。默认直接读块自带的源码行号
+                   （markdown-local.js 会给每个顶层块写 data-line）；
+                   退回服务端渲染时没有行号，才按文档顺序做一次单调的文本比对。
 
      这样任意一侧的滚动像素都能先换算成源码行，再线性插值到另一侧。 */
 
@@ -161,7 +161,9 @@
     // 末块的下边距也占位置，漏掉它最后一块就顶不到上沿
     var margin = parseFloat(window.getComputedStyle(last).marginBottom) || 0;
     var height = last.getBoundingClientRect().height;
-    var pad = Math.max(0, preview.clientHeight - previewPadBottom - height - margin);
+    // 这里是 paddingBottom 的「覆盖值」而不是「额外垫高」，所以不能再去扣基础内边距：
+    // 扣了的话留白就短一截，末块恰好差那一段到不了上沿。
+    var pad = Math.max(0, preview.clientHeight - height - margin);
     preview.style.paddingBottom = pad + 'px';
   }
 
@@ -274,11 +276,39 @@
     return i;
   }
 
+  /* 本地渲染的块自带源码行号，直接采信；没有（服务端渲染的回退路径）返回 null。 */
+  function blockLines(element) {
+    var start = parseInt(element.getAttribute('data-line'), 10);
+    if (isNaN(start)) {
+      return null;
+    }
+    var end = parseInt(element.getAttribute('data-line-end'), 10);
+    return { start: start, end: isNaN(end) ? start + 1 : end };
+  }
+
+  /* 源码里的分隔线行：三个以上同一种符号，中间可以有空格（--- / *** / _ _ _）。 */
+  var RULE_LINE_RE = /^\s{0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/;
+
+  function findRuleLine(lines, cursor) {
+    var j = cursor;
+    while (j < lines.length && j - cursor < ANCHOR_SCAN_LIMIT) {
+      if (RULE_LINE_RE.test(lines[j])) {
+        return j;
+      }
+      j++;
+    }
+    return -1;
+  }
+
   /* 重算「预览块 ↔ 源码行」的对应表。
-     只按每个块开头的几个字去源码里认领起始行，认到就把游标推到这行之后，
-     整块文本长度不再参与比对——源码和 DOM 的排版细节（缩进、强调符）总有出入，
-     逐字对整块很容易差一两个字符，进而多吞掉后面好几行，越往后偏得越多。
-     认领不到（图片、分隔线这类）就沿用当前游标。 */
+     本地渲染的每个顶层块都自带源码行号，直接采信——精确到行，也不受源码与 DOM
+     排版差异的影响。退回服务端渲染时没有行号，才按老的文本认领：只取块开头的
+     几个字去源码里认领起始行，认到就把游标推到这行之后，整块文本长度不参与比对
+     （逐字对整块很容易差一两个字符，进而多吞掉后面好几行，越往后偏得越多）。
+
+     分隔线一直是文本认领的死角：它没有任何文字，认领不到就只能沿用游标，于是被
+     算进「上一个块所在的那些行」——前面那个跨三行的引用块会让它整整偏三行，紧跟
+     其后的段落也被一起压缩。所以这里单独给它补一条：去源码里找它自己那一行。 */
   function rebuildAnchors() {
     anchors = [];
     if (!textarea || !preview || !lineTops.length || !preview.children.length) {
@@ -291,21 +321,36 @@
     var lastLine = 0;
 
     for (var i = 0; i < preview.children.length; i++) {
-      var want = domText(preview.children[i]);
+      var element = preview.children[i];
       var startLine = cursor;
+      var claimed = blockLines(element);
 
-      if (want) {
-        var probe = want.slice(0, ANCHOR_PROBE);
-        var need = Math.min(4, probe.length);
-        var j = cursor;
-        while (j < lines.length && j - cursor < ANCHOR_SCAN_LIMIT) {
-          var piece = sourceText(lines[j]);
-          if (piece && commonPrefix(piece, probe) >= need) {
-            startLine = j;
-            cursor = j + 1; // 下一块从这行之后接着找
-            break;
+      if (claimed) {
+        startLine = claimed.start;
+        // 下一块从本块之后接着算，免得块与块之间互相顶掉
+        cursor = Math.max(cursor, claimed.end);
+      } else if (element.tagName === 'HR') {
+        // 分隔线没有文字可言，认领不到就白白偏上几行，去源码里找它自己那一行
+        var rule = findRuleLine(lines, cursor);
+        if (rule >= 0) {
+          startLine = rule;
+          cursor = rule + 1;
+        }
+      } else {
+        var want = domText(element);
+        if (want) {
+          var probe = want.slice(0, ANCHOR_PROBE);
+          var need = Math.min(4, probe.length);
+          var j = cursor;
+          while (j < lines.length && j - cursor < ANCHOR_SCAN_LIMIT) {
+            var piece = sourceText(lines[j]);
+            if (piece && commonPrefix(piece, probe) >= need) {
+              startLine = j;
+              cursor = j + 1; // 下一块从这行之后接着找
+              break;
+            }
+            j++;
           }
-          j++;
         }
       }
 
@@ -552,9 +597,6 @@
   }
 
   if (textarea && preview) {
-    // 记下预览自身的底部内边距：文末留白写的是同一个属性，算的时候得先把它扣掉
-    previewPadBottom = parseFloat(window.getComputedStyle(preview).paddingBottom) || 0;
-
     textarea.addEventListener('input', function () {
       if (toolbarEditing) {
         return; // 这次改动来自工具栏，它自己会收尾，别重复量一遍标尺
