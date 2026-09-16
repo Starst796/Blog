@@ -296,6 +296,15 @@ class Article:
     def year(self) -> int:
         return self.date.year
 
+    @property
+    def has_toc(self) -> bool:
+        """有没有小标题可用。
+
+        ``toc`` 扩展在没有 2–4 级标题时也会给一个空的 ``<ul>``，字段非空却没东西可列，
+        所以按里面有没有链接来判断，模板据此决定要不要显示目录。
+        """
+        return "<a " in self.toc
+
 
 @dataclass(slots=True)
 class Project:

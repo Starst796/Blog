@@ -1283,6 +1283,258 @@ body:has(.preview-bar) .site-header {
   font-size: 0.94rem;
 }
 
+/* ------------------------------------------------ 悬浮目录（可拖动）
+
+   按钮固定悬浮在右下角，按住可以拖到任意位置，松手后位置记进 localStorage。
+   拖动用指针事件实现，所以按钮上要 touch-action: none——否则手指落在按钮上
+   会被浏览器当成滚动，拖不动。
+   面板是按钮的绝对定位子元素，跟着按钮一起移动；开合方向由 JS 打的
+   is-below / is-right 决定：默认挂在按钮上方、向左展开。 */
+
+.toc-fab {
+  position: fixed;
+  right: 24px;
+  bottom: 28px;
+  z-index: 40;
+}
+
+.toc-fab-button {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--panel-solid);
+  color: var(--fg-muted);
+  box-shadow: var(--shadow-sm);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease,
+    transform 0.16s ease;
+}
+
+.toc-fab-button:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.toc-fab-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.toc-fab.is-open .toc-fab-button {
+  color: var(--fg);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-glow);
+}
+
+/* 拖动中：去掉悬停位移，光标换成抓紧，免得按钮跟手指差半拍 */
+.toc-fab.is-dragging .toc-fab-button {
+  cursor: grabbing;
+  transform: none;
+}
+
+.toc-fab-button svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.toc-fab-button svg .dot {
+  fill: currentColor;
+  stroke: none;
+}
+
+.toc-fab-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  display: flex;
+  flex-direction: column;
+  width: min(280px, calc(100vw - 32px));
+  max-height: min(60vh, 460px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-solid);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  animation: toc-panel-in 0.14s ease;
+}
+
+/* display: flex 会盖掉浏览器给 [hidden] 的 display: none，得自己补回来 */
+.toc-fab-panel[hidden] {
+  display: none;
+}
+
+/* 按钮在视口上半屏时面板朝下开，在左半屏时改成向右展开 */
+.toc-fab.is-below .toc-fab-panel {
+  top: calc(100% + 10px);
+  bottom: auto;
+}
+
+.toc-fab.is-right .toc-fab-panel {
+  right: auto;
+  left: 0;
+}
+
+@keyframes toc-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.toc-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px 8px 0;
+}
+
+.toc-tab {
+  flex: 1 1 0;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: 0.84rem;
+  cursor: pointer;
+  transition: color 0.16s ease, background 0.16s ease, border-color 0.16s ease;
+}
+
+.toc-tab:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.toc-tab[aria-selected="true"] {
+  border-color: var(--border);
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.toc-pane {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 16px 16px;
+}
+
+.toc-pane[hidden] {
+  display: none;
+}
+
+/* 面板里空间窄，目录缩进比正文里那份收紧一些 */
+.toc-fab .toc {
+  font-size: 0.86rem;
+}
+
+.toc-fab .toc ul {
+  padding-left: 0.85em;
+}
+
+.toc-fab .toc li {
+  margin: 2px 0;
+}
+
+.toc-fab .toc a {
+  display: block;
+  padding: 3px 0;
+  color: var(--fg-muted);
+  line-height: 1.55;
+}
+
+.toc-fab .toc a:hover {
+  color: var(--accent);
+}
+
+/* 滚动时高亮正在读的那一节（JS 按标题位置算出来） */
+.toc-fab .toc a.is-active {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.toc-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: toc-item;
+}
+
+.toc-list-item a {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  transition: color 0.16s ease, background 0.16s ease;
+}
+
+.toc-list-item a::before {
+  counter-increment: toc-item;
+  content: counter(toc-item, decimal-leading-zero);
+  flex: none;
+  color: var(--fg-faint);
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.toc-list-item a:hover {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.toc-list-item.is-current a {
+  background: rgba(88, 101, 242, 0.16);
+  color: var(--fg);
+}
+
+.toc-list-item.is-current .toc-list-title {
+  font-weight: 600;
+}
+
+.toc-list-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.88rem;
+}
+
+.toc-list-date {
+  flex: none;
+  color: var(--fg-faint);
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.toc-empty {
+  margin: 0;
+  color: var(--fg-faint);
+  font-size: 0.84rem;
+}
+
+@media print {
+  .toc-fab {
+    display: none;
+  }
+}
+
 /* --------------------------------------------------------------------------
    12. 错误页
    -------------------------------------------------------------------------- */
@@ -2243,6 +2495,17 @@ input[type="checkbox"] {
 @media (max-width: 600px) {
   .preview-text {
     display: none;
+  }
+
+  /* 悬浮目录在小屏上贴边一些，按钮也收小一圈 */
+  .toc-fab {
+    right: 14px;
+    bottom: 16px;
+  }
+
+  .toc-fab-button {
+    width: 42px;
+    height: 42px;
   }
 }
 

@@ -111,6 +111,9 @@ python wsgi.py                  # http://127.0.0.1:8080
 ├── templates/                 Jinja2 模板（公开页面在根目录，后台在 admin/）
 ├── static/                    CSS / JS / 图标
 │   └── js/
+│       ├── site.js            公开页面交互：明暗主题、危险操作确认
+│       ├── toc.js             文章页悬浮目录：可拖动，本篇 / 文集两个页签
+│       ├── admin.js           后台交互：编辑器与工具栏、草稿缓存、上传
 │       ├── markdown-local.js  后台预览的本地 Markdown 渲染（含已知差异说明）
 │       └── vendor/            预览用的第三方库，随仓库提交（见其中 README）
 ├── deploy/
@@ -151,6 +154,10 @@ cover: uploads/2026/09/cover.png   # 可选，也接受外链
   只是给每条标注所属文集；点条目内的文集标注或顶部文集胶囊即可只看该文集。
 - **同文集阅读**：详情页底部的「更早 / 更新」只在**同一文集**内跳转，
   因此顺着点下去就等于把这篇文集从新读到旧，不会被其他文集穿插。
+- **悬浮目录**：详情页右下角有一个可拖动的圆形按钮，点开后在两个页签间切换：
+  「本篇目录」列文章的小标题（滚动时会高亮正在读的那一节），
+  「文集目录」列同文集的全部文章并标出当前这篇。按钮可以拖到顺手的位置，
+  位置存在读者自己的浏览器里（`localStorage` 键 `toc-fab-pos`），不会影响别人。
 - 后台「写新文章 / 编辑文章」的**文集**输入框支持 `datalist` 补全已有文集名。
 
 #### 发布时刻（`time`）
@@ -264,6 +271,7 @@ links:
 | 路由与页面功能 | `views.py` | 用 `@bp.get("/path")` 添加新页面 |
 | 后台功能 | `admin.py` | 蓝图前缀 `/admin`，新增表单参考 `article_form.html` |
 | Markdown 能力（目录深度、提示块…） | `content.py` 的 `_markdown()` | 调整扩展列表与 `extension_configs` |
+| 文章页的悬浮目录 | `static/js/toc.js`、`static/css/site.css` 的 `.toc-fab` | 两个页签的内容分别在 `article_detail.html` 里；拖动与位置记忆见 `toc.js` |
 
 ### 换个配色（30 秒）
 

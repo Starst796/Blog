@@ -60,7 +60,7 @@
         <img class="post-cover" src="{{ article.cover }}" alt="" loading="lazy">
       {% endif %}
 
-      {% if article.toc %}
+      {% if article.has_toc %}
         <details class="post-toc" open>
           <summary>目录</summary>
           {{ article.toc | safe }}
@@ -95,4 +95,62 @@
       </nav>
     {% endif %}
   </div>
+
+  {# 悬浮目录：按钮按住即可拖到顺手的位置（位置存在 localStorage），
+     点开在「本篇」小标题与「文集」全部文章之间切换。
+     面板是按钮的子元素，因此会跟着按钮一起移动；开合方向由 JS 打上的
+     is-below / is-right 两个类决定（见 static/js/toc.js）。 #}
+  <div class="toc-fab" data-toc-fab>
+    {# 按钮写在面板前面：面板是绝对定位的，DOM 顺序不影响观感，但 Tab 键会先到按钮、
+       再顺势进入面板里的页签与链接；反过来则要先按 Shift+Tab 才能回头进面板。 #}
+    <button class="toc-fab-button" type="button" data-toc-toggle
+            aria-expanded="false" aria-controls="toc-panel"
+            aria-label="打开目录" title="目录（可拖动）">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle class="dot" cx="5" cy="6.6" r="1.3"/>
+        <circle class="dot" cx="5" cy="12" r="1.3"/>
+        <circle class="dot" cx="5" cy="17.4" r="1.3"/>
+        <path d="M9.6 6.6h9.4M9.6 12h9.4M9.6 17.4h6.2"/>
+      </svg>
+    </button>
+
+    <div class="toc-fab-panel" id="toc-panel" data-toc-panel hidden>
+      <div class="toc-tabs" role="tablist" aria-label="目录范围">
+        <button class="toc-tab" type="button" role="tab" id="toc-tab-outline"
+                aria-controls="toc-pane-outline" aria-selected="true"
+                data-toc-tab="outline">本篇目录</button>
+        <button class="toc-tab" type="button" role="tab" id="toc-tab-collection"
+                aria-controls="toc-pane-collection" aria-selected="false" tabindex="-1"
+                data-toc-tab="collection">文集目录</button>
+      </div>
+
+      <div class="toc-pane" role="tabpanel" id="toc-pane-outline"
+           aria-labelledby="toc-tab-outline" data-toc-pane="outline">
+        {% if article.has_toc %}
+          <div class="toc" data-toc-outline>{{ article.toc | safe }}</div>
+        {% else %}
+          <p class="toc-empty">这篇没有小标题。</p>
+        {% endif %}
+      </div>
+
+      <div class="toc-pane" role="tabpanel" id="toc-pane-collection"
+           aria-labelledby="toc-tab-collection" data-toc-pane="collection" hidden>
+        <ol class="toc-list">
+          {% for item in collection_articles %}
+            {% set is_here = item.slug == article.slug %}
+            <li class="toc-list-item{% if is_here %} is-current{% endif %}">
+              <a href="{{ item.url }}"{% if is_here %} aria-current="page"{% endif %}>
+                <span class="toc-list-title">{{ item.title }}</span>
+                <span class="toc-list-date">{{ item.date.isoformat() }}</span>
+              </a>
+            </li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/toc.js', v=asset_version) }}" defer></script>
 {% endblock %}
