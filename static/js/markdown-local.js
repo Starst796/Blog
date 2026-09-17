@@ -265,7 +265,11 @@
       return lastContent + 1;
     }
 
-    md.block.ruler.before('fence', 'admonition', rule);
+    // 提示块能截断段落（Python-Markdown 按 search 找 !!!，会就地切开段落），
+    // 所以这条规则要进「段落终止链」，否则 `段落\n!!! note` 在预览里会变成一行文字
+    md.block.ruler.before('fence', 'admonition', rule, {
+      alt: ['paragraph', 'reference', 'blockquote', 'list']
+    });
     md.renderer.rules.admonition_title = function (tokens, idx) {
       return '<p class="admonition-title">' + md.utils.escapeHtml(tokens[idx].content) + '</p>\n';
     };
@@ -378,6 +382,82 @@
     });
   }
 
+  /* ------------------------------------------------ 块规则的边界对齐
+
+     Python-Markdown 的一个「块」是空行分隔的一整段：它拿各处理器去试这块的**第一行**，
+     所以列表、表格这类只能落在整块开头的构造，紧跟在一段文字下面时根本不算数——那几行
+     会被当成段落的续行（线上的预览里就是普通文字）。markdown-it 是按行推进的，允许它们
+     把段落截断，于是预览会比线上「多出」一个列表或表格。这是两边不一致的主要来源。
+
+     反过来，提示块、标题、引用、围栏代码在 Python-Markdown 里**可以**截断段落
+     （它们用 search 在整块里找，找到了就切开），这几样不用动，只有提示块是我自己
+     注册的规则，补上 'paragraph' 就行。
+
+     Ruler 没有「按名字取原函数」的公开方法，只能从内部表里读一次；读不到就什么都不做，
+     宁可保留 markdown-it 的宽松行为，也不要让预览整篇坏掉。 */
+  function findBlockRule(md, name) {
+    var rules = md.block.ruler.__rules__;
+    if (!rules) {
+      return null;
+    }
+    for (var i = 0; i < rules.length; i++) {
+      if (rules[i].name === name) {
+        return rules[i];
+      }
+    }
+    return null;
+  }
+
+  /* 列表规则要按 Python-Markdown 的意思回答两个问题：
+
+     1.「1) 甲」不是列表。Python-Markdown 的有序列表只认点号标记（它的正则里就没有
+        右括号），这种写法在线上是一行普通文字，markdown-it 却会排成列表。
+     2. 列表不能截断段落。段落的终止判定会拿「段落终止链」逐行来探（silent = true），
+        Python-Markdown 的列表只认块首，所以探测一律回答「不是」。
+
+     第 2 条有个例外：列表项内部必须照常回答「是」——markdown-it 正是靠这次探测判断
+     列表项到哪里结束，一律回答「不是」会把第二项并进第一项里。用 listDepth 记一下
+     自己是不是正在解析列表，比看 state.parentType 可靠（那个字段会被上游规则改坏）。 */
+  var PAREN_ORDER_RE = /^\d+\)[ \t]/;
+  var listDepth = 0;
+
+  function alignListRule(md) {
+    var rule = findBlockRule(md, 'list');
+    if (!rule) {
+      return;
+    }
+    var original = rule.fn;
+    md.block.ruler.at('list', function (state, startLine, endLine, silent) {
+      var start = state.bMarks[startLine] + state.tShift[startLine];
+      if (PAREN_ORDER_RE.test(state.src.slice(start, state.eMarks[startLine]))) {
+        return false; // 不是列表，交给段落规则当成普通文字
+      }
+      if (silent) {
+        return listDepth > 0 && original.apply(this, arguments);
+      }
+      listDepth++;
+      try {
+        return original.apply(this, arguments);
+      } finally {
+        listDepth--;
+      }
+    }, { alt: rule.alt });
+  }
+
+  /* 表格同理：Python-Markdown 的表头必须是块的第一行。表格规则不解析子块，直接从它的
+     alt 里摘掉 'paragraph' 即可（列表不能这么做，它会弄坏列表项的分项）。 */
+  function alignTableRule(md) {
+    var rule = findBlockRule(md, 'table');
+    if (!rule) {
+      return;
+    }
+    md.block.ruler.at('table', rule.fn, {
+      alt: rule.alt.filter(function (chain) {
+        return chain !== 'paragraph';
+      })
+    });
+  }
+
   /* ------------------------------------------------ 渲染器 */
 
   function createEngine() {
@@ -407,6 +487,14 @@
         (options.xhtmlOut ? ' /' : '') + '>\n';
     };
 
+    // 缩进代码块：服务端 codehilite 对围栏与缩进块一视同仁，都套 .highlight 外壳，
+    // 少了这层，预览里缩进代码块会缺掉边框与底色
+    md.renderer.rules.code_block = function (tokens, idx) {
+      return '<div class="highlight"' + md.renderer.renderAttrs(tokens[idx]) +
+        '><pre><span></span><code>' + md.utils.escapeHtml(tokens[idx].content) +
+        '</code></pre></div>\n';
+    };
+
     // pymdownx.tilde 输出 <del>，markdown-it 的删除线是 <s>
     md.renderer.rules.s_open = function () { return '<del>'; };
     md.renderer.rules.s_close = function () { return '</del>'; };
@@ -428,6 +516,9 @@
     md.use(headingIdsPlugin);
     md.use(admonitionPlugin);
     md.use(blockAttrListPlugin);
+    // 列表与表格不能截断段落，提示块可以（见「块规则的边界对齐」）
+    alignListRule(md);
+    alignTableRule(md);
     // 放最后：上面几个插件建出来的块也要能带上行号
     md.use(sourceLinePlugin);
     return md;
@@ -449,11 +540,15 @@
 })(window);
 
 /* 已知差异（相对于服务端 content.py 的渲染结果）：
-   1. sane_lists：服务端开了这个扩展，列表必须与上文隔一个空行才会变成列表，
-      紧跟段落的 `1.` / `-` 在线上只是普通文字，预览却会排成列表。
-      所以写列表时记得在前面留一个空行——预览比线上宽松。这一条没有对齐，
-      是因为它牵扯到 markdown-it 列表项切分的内部机制，硬改会连带弄坏正常的列表。
-   2. 代码高亮：highlight.js 不产出标点与运算符的 span，site.css 里 .p / .o 的浅蓝
+   1. 列表的缩进：Python-Markdown 按 tab_length=4 算，子列表与列表项的续文都要缩进
+      四个空格；markdown-it 按 CommonMark 算，两个空格就算嵌进去了。所以缩进两格的
+      「子列表」在线上与上一项平级，预览里却会嵌一层。写子列表时缩进四个空格即可一致。
+   2. 定义列表紧跟段落：Python-Markdown 的 def_list 会把紧贴在上面的段落整段当成术语
+      （`段落\n术语\n:   解释` 在线上整个变成一个 dl，段落那行也成了 dt），预览只认
+      紧挨着的那一项。写定义列表时前面留一个空行，两边就一致了。
+   3. 代码高亮：highlight.js 不产出标点与运算符的 span，site.css 里 .p / .o 的浅蓝
       在预览里会缺一点；两边认得的语言也不完全重合，认不出的语言预览退回纯文本
       （不使用自动猜测）。颜色与结构一致的部分完全一致。
-   3. 属性顺序：如 <img> 的 alt/src 顺序与 Python-Markdown 不同，不影响渲染。 */
+   4. 属性顺序：如 <img> 的 alt/src 顺序与 Python-Markdown 不同，不影响渲染。
+   除这几条以外，「哪些构造能在段落中间把段落切开」也已经对齐（见「块规则的边界对齐」）：
+   列表与表格必须与上文隔一个空行，否则线上只是一行普通文字，预览现在也这么显示。 */

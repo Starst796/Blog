@@ -118,6 +118,10 @@ def _markdown() -> md.Markdown:
 def render(markdown_text: str) -> tuple[str, str]:
     """渲染 Markdown，返回 ``(html, toc_html)``。"""
     engine = _markdown()
+    # 实例在线程内复用，但 Python-Markdown 的状态（脚注、引用式链接定义、HTML 暂存区）
+    # 是跨次保留的，官方要求每次 convert 之前手动清一遍。少了这一句，一篇带脚注的文章
+    # 会把它的脚注追加到同一个线程随后渲染的每一篇上，引用式链接定义也会互相串味。
+    engine.reset()
     html = engine.convert(markdown_text or "")
     return html, getattr(engine, "toc", "")
 
