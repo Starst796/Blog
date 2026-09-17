@@ -672,6 +672,22 @@ def upload_image():
     }
 
 
+@bp.get("/uploads/sizes")
+@login_required
+def upload_sizes():
+    """编辑器预览要用的图片尺寸清单，键是图片地址（``/uploads/2026/09/x.png``）。
+
+    公开页面不需要它：只有编辑器会整篇重绘预览，也就只有那里会被「图片先 0 高、
+    解码完再变高」顶着走。加上登录校验是因为清单会列出上传目录里的文件名，
+    而公开的 ``/uploads/`` 只是按名取图、不做目录枚举。
+    """
+    sizes = {
+        f"{content.MEDIA_URL_PREFIX}/{relative}": size
+        for relative, size in content.upload_sizes().items()
+    }
+    return {"ok": True, "sizes": sizes}
+
+
 @bp.post("/preview")
 @login_required
 def preview_markdown():
