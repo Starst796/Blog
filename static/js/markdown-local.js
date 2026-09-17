@@ -17,6 +17,10 @@
      这里多出来的一样：每个顶层块带 data-line / data-line-end（源码行号），
      只有 admin.js 的滚动联动会读它，正文与线上渲染都不受影响。
 
+   对外的接口是 blocks()：把文档切成顶层块、逐块渲染，并给每块一个稳定的身份，
+   好让预览只重画改过的那些块（原因见「分块渲染」一节）。render() 是整篇渲染，
+   只留给「拿不到 blocks()」的兜底路径（例如浏览器缓存着旧版调用方）。
+
    已知差异（见文件末尾注释）：列表与上文的空行、代码高亮的细腻程度、属性顺序。
 
    依赖 static/js/vendor/ 下的库，由模板按固定顺序加载；任何依赖缺失都会让
@@ -318,6 +322,62 @@
     };
   }
 
+  /* ------------------------------------------------ 分块渲染
+
+     预览每敲一个键就要重画一次。若调用方拿到的是整篇 HTML，它只能整篇替换
+     innerHTML：没改动的段落也被换成新节点，里面的图片重新走一遍加载（高度先塌后长）、
+     浏览器重排整篇文档、行号锚点跟着抖。所以这里把文档切成「顶层块」，逐块渲染，
+     并给每块一个稳定的身份，调用方据此只替换真的变了的那几块。
+
+     身份取「块在源码里覆盖的那几行原文」而不是渲染结果：data-line 与重复标题的
+     锚点（foo、foo_1）都会随前后文变，用渲染结果当身份的话，在文首插一个空行就会
+     把后面每一块都判成新的。
+
+     切法直接照 token 流来：开/闭成对的 token（段落、列表、引用、提示块…）归成一块，
+     层级为 0 的单 token（围栏代码、分隔线、html 块）自成一块。逐块调用渲染器与整篇
+     渲染的结果一致——渲染规则只读自己那几个 token，不看邻居。 */
+  function splitBlocks(tokens) {
+    var groups = [];
+    var group = null;
+    var depth = 0;
+    for (var i = 0; i < tokens.length; i++) {
+      if (!group) {
+        group = [];
+        groups.push(group);
+      }
+      group.push(tokens[i]);
+      depth += tokens[i].nesting;
+      if (depth === 0) {
+        group = null; // 自成一块（单 token）或一对开闭刚好收尾
+      }
+    }
+    return groups;
+  }
+
+  /* 一块覆盖的源码行。map 挂在开 token 上，个别插件建的块没有 map。 */
+  function blockMap(group) {
+    for (var i = 0; i < group.length; i++) {
+      if (group[i].map) {
+        return group[i].map;
+      }
+    }
+    return null;
+  }
+
+  function renderBlocks(source) {
+    var lines = source.split('\n');
+    var env = {};
+    return splitBlocks(engine.parse(source, env)).map(function (group) {
+      var html = engine.renderer.render(group, engine.options, env);
+      var map = blockMap(group);
+      return {
+        // 没有 map 的块（脚注区的容器等）退回用渲染结果当身份：它本来就不随前后文变
+        key: map ? lines.slice(map[0], map[1]).join('\n') : '\u0000' + html,
+        html: html
+      };
+    });
+  }
+
   /* ------------------------------------------------ 渲染器 */
 
   function createEngine() {
@@ -379,6 +439,11 @@
     available: Boolean(engine),
     render: function (text) {
       return engine ? engine.render(text || '') : null;
+    },
+    /* 分块渲染：返回 [{ key, html }]，key 是块覆盖的那几行源码原文。
+       调用方按 key 对齐新旧两份清单，只替换对不上的块（见 admin.js 的 patchPreview）。 */
+    blocks: function (text) {
+      return engine ? renderBlocks(String(text == null ? '' : text)) : null;
     }
   };
 })(window);

@@ -6,7 +6,9 @@
    页面里只存在其中之一也能正常工作。
 
    预览默认在浏览器本地渲染（static/js/markdown-local.js），编辑过程不发任何请求，
-   出图速度只取决于本机；本地渲染不可用时（依赖没加载上）退回服务端 /admin/preview。 */
+   出图速度只取决于本机；本地渲染不可用时（依赖没加载上）退回服务端 /admin/preview。
+   预览是增量重绘的：正文切成顶层块，只有改过的块会换新（见「增量重绘」）；
+   图片解码、窗口缩放这类异步高度变化则按视口锚点把画面摆回原处（见「视口锚点」）。 */
 (function () {
   'use strict';
 
@@ -50,8 +52,9 @@
   var previewTimer = null;
   var previewSeq = 0; // 走服务端渲染时丢弃过期响应，防止旧结果覆盖新结果
   var previewVisible = Boolean(preview);
-  var paintedHtml = null; // 上一次写入预览的 HTML，内容没变就不重绘（重绘会丢滚动位置）
-  var paintToken = 0; // 每次重绘递增，用来让过期的图片回调失效
+  var renderedBlocks = []; // 预览里当前的块（见「增量重绘」）：[{ key, html, nodes }]
+  var imageSizes = Object.create(null); // 图片地址 → 像素尺寸，用来提前占住位置
+  var stickyAnchor = null; // 视口顶边压住的那个块，位置变动时按它把画面摆回原处
   var stashedScroll = null; // 预览被隐藏时暂存的滚动位置
   var toolbarEditing = false; // 工具栏正在改正文，见 replaceRange
 
@@ -76,14 +79,13 @@
     status.classList.toggle('is-error', Boolean(isError));
   }
 
-  /* 重绘预览会让滑块位置变：整体替换 innerHTML 后滚动位置可能被重置或被新内容长度钳住，
-     图片、代码块又要等解码/排版完成才有高度，之后还会再漂一次。
-     办法是重绘前记下滚动位置，重绘后原样还原；还原是幂等的，图片加载完成后再调一次即可。 */
+  /* 重绘预览会让滑块位置变：内容长度变了，滚动位置可能被重置或被新的长度钳住。
+     办法是重绘前记下位置、重绘后原样还原；贴底要单独认（见 restoreScroll），
+     其余情况交给视口锚点把画面摆回原处（见「视口锚点」）。 */
   function captureScroll(element) {
     var max = element.scrollHeight - element.clientHeight;
     return {
       top: element.scrollTop,
-      written: element.scrollTop, // 我们最后写进去的值，用来识别用户是否自己滚过
       atBottom: max > 0 && max - element.scrollTop <= 1
     };
   }
@@ -91,13 +93,10 @@
   function restoreScroll(element, snapshot) {
     var max = element.scrollHeight - element.clientHeight;
     if (max <= 0) {
-      element.scrollTop = 0;
-      snapshot.written = 0;
-      return;
+      return applyScroll(element, 0);
     }
     // 贴底时保持贴底（继续在文末输入才能一直看到结尾），否则原样还原
-    element.scrollTop = snapshot.atBottom ? max : Math.min(snapshot.top, max);
-    snapshot.written = element.scrollTop;
+    return applyScroll(element, snapshot.atBottom ? max : Math.min(snapshot.top, max));
   }
 
   /* ------------------------------------------------ 滚动联动
@@ -400,16 +399,81 @@
     return interpolate(anchors, 'p', 'e', preview.scrollTop, scrollMax(preview), scrollMax(textarea));
   }
 
+  /* 写滚动位置的唯一入口：位置真的变了才写，并且留下标记，把随之而来的 scroll 事件
+     认出来咽掉（见 handleScroll）——否则我们自己摆位置的动作会被当成用户在滚，
+     反过来把另一侧也拖走。返回值表示是否真的写了。 */
   function applyScroll(element, top) {
     var next = Math.max(0, Math.min(top, scrollMax(element)));
     if (Math.abs(element.scrollTop - next) <= 1) {
-      return; // 位置没变就不写，也就不会触发对面回弹
+      return false; // 位置没变就不写，也就不会有随之而来的事件
     }
     syncLock = { element: element, top: next };
     element.scrollTop = next;
+    return true;
+  }
+
+  /* ------------------------------------------------ 视口锚点（画面不动）
+
+     像素位置在「上方内容长高了多少」面前是没有意义的：同样停在 600px，图片解码完
+     之后看到的东西已经往下挪了一截。所以这里记的不是位置，而是「视口顶边压住的那个
+     块，以及它相对顶边的偏移」；高度变了之后把这个块摆回原处，看到的画面就一格不动。
+
+     这不是只为了图片：任何异步的高度变化（字体、滚动条、窗口宽度变化引起的重排）
+     都靠它兜住。 */
+
+  function captureAnchor() {
+    if (!previewVisible || panesStacked()) {
+      return null;
+    }
+    var top = preview.scrollTop;
+    var frame = preview.getBoundingClientRect();
+    var anchor = null;
+    for (var i = 0; i < preview.children.length; i++) {
+      var child = preview.children[i];
+      var childTop = child.getBoundingClientRect().top - frame.top + top;
+      if (childTop > top + 1) {
+        break; // 已经在视口下方：上一个压住顶边的块就是锚点
+      }
+      anchor = { node: child, delta: childTop - top };
+    }
+    return anchor;
+  }
+
+  /* 把锚点块摆回原来的位置。它已经被换成新节点（正好在改那一段）时返回 false，
+     交给调用方按别的办法还原。 */
+  function restoreAnchor(anchor) {
+    if (!anchor || !anchor.node.isConnected || !previewVisible) {
+      return false;
+    }
+    var frame = preview.getBoundingClientRect();
+    var top = anchor.node.getBoundingClientRect().top - frame.top + preview.scrollTop;
+    applyScroll(preview, top - anchor.delta);
+    return true;
+  }
+
+  /* 内容高度变了（图片解码完、窗口改宽）之后把两边重新对上：预览的文末留白、源码行
+     与像素的对应表都要重量，再按视口锚点把画面摆回原处。
+
+     这里刻意不走「以编辑框为基准」的那条映射：图片解码、窗口缩放都不是用户滚出来的，
+     照映射重算会让画面自己漂走。编辑框与预览的联动交给滚动事件与重绘时的定位。 */
+  function resyncScroll() {
+    if (!previewVisible) {
+      return;
+    }
+    refreshPreviewPad();
+    if (panesStacked()) {
+      return;
+    }
+    rebuildAnchors();
+    restoreAnchor(stickyAnchor); // 锚点块正好被换掉时保持现状，别乱跳
+    stickyAnchor = captureAnchor();
   }
 
   function handleScroll(source) {
+    // 用户自己滚了预览，锚点要跟着换，否则图片解码、窗口缩放时会把画面拉回他离开的地方
+    if (source === preview) {
+      stickyAnchor = captureAnchor();
+    }
     if (!previewVisible || panesStacked() || !anchors.length) {
       return;
     }
@@ -429,47 +493,328 @@
     }
   }
 
-  function paintPreview(html) {
-    if (html === paintedHtml) {
-      return; // 内容没变就别重绘，省一次滚动位置抖动
+  /* ------------------------------------------------ 增量重绘
+
+     正文一动就重画整篇预览的代价有三层：没改动的段落也换成新节点（里面的图片重新
+     走一遍加载，高度先塌下去再长回来）、浏览器要重排整篇文档、滚动位置还得另外找回来。
+
+     渲染器会把文档切成顶层块并给每块一个稳定的身份（块覆盖的那几行源码原文，见
+     markdown-local.js）。这里按身份对齐新旧两份块清单，只把对不上的那些换掉，其余块
+     的 DOM 原样留着——图片还在、解码结果还在、高度不变。
+
+     身份相同的块也不一定长得一模一样：data-line 会随前后文变，就地改属性即可；引用
+     的链接定义改了、重复标题的编号换了之类，HTML 会真的不一样，那种照样重建。 */
+
+  /* 把一段 HTML 解析成节点。用 <template> 而不是 div：模板内容属于另一份文档，
+     里面的图片在被插进预览之前不会开始加载——先量尺寸、再插入，中间不会闪一下。 */
+  function parseNodes(html) {
+    var holder = document.createElement('template');
+    holder.innerHTML = html;
+    return Array.prototype.slice.call(holder.content.childNodes);
+  }
+
+  /* 行号每次都跟着前后文变，判断「这块改没改」时要先把它摘掉。 */
+  function withoutLineAttrs(html) {
+    return html.replace(/ data-line(?:-end)?="\d+"/g, '');
+  }
+
+  /* 保留下来的块，只有行号会变（其余 HTML 一致），就地改属性就行：
+     换成新节点会让里面的图片重新加载，高度又得从 0 长一次。 */
+  function syncLineAttrs(block, html) {
+    var node = block.nodes[0];
+    if (!node || node.nodeType !== 1) {
+      return;
+    }
+    var start = / data-line="(\d+)"/.exec(html);
+    var end = / data-line-end="(\d+)"/.exec(html);
+    if (start) {
+      node.setAttribute('data-line', start[1]);
+    } else {
+      node.removeAttribute('data-line');
+    }
+    if (end) {
+      node.setAttribute('data-line-end', end[1]);
+    } else {
+      node.removeAttribute('data-line-end');
+    }
+  }
+
+  /* 两个块清单的最长公共子序列：返回「新块下标 → 旧块下标」的对应表，对不上的记 -1。
+     长短一致的公共前后缀先摘掉，剩下要对齐的只有改动附近那一小段，O(n²) 也够快；
+     万一真的一整篇都变了（粘贴整篇、导入文件），超过上限就不再硬算，全部重建。 */
+  var ALIGN_LIMIT = 250000; // 中间那段的行列数乘积上限
+
+  function alignBlocks(oldKeys, newKeys) {
+    var match = [];
+    for (var i = 0; i < newKeys.length; i++) {
+      match.push(-1);
     }
 
-    var token = ++paintToken; // 本次重绘的代号
+    var head = 0;
+    while (head < oldKeys.length && head < newKeys.length &&
+           oldKeys[head] === newKeys[head]) {
+      match[head] = head;
+      head++;
+    }
+    var oldEnd = oldKeys.length;
+    var newEnd = newKeys.length;
+    while (oldEnd > head && newEnd > head && oldKeys[oldEnd - 1] === newKeys[newEnd - 1]) {
+      oldEnd--;
+      newEnd--;
+      match[newEnd] = oldEnd;
+    }
+
+    var rows = oldEnd - head;
+    var cols = newEnd - head;
+    if (!rows || !cols || rows * cols > ALIGN_LIMIT) {
+      return match;
+    }
+
+    // dp[r * width + c] = old[head + r..] 与 new[head + c..] 的最长公共子序列长度
+    var width = cols + 1;
+    var dp = new Int32Array((rows + 1) * width);
+    for (var r = rows - 1; r >= 0; r--) {
+      for (var c = cols - 1; c >= 0; c--) {
+        dp[r * width + c] = oldKeys[head + r] === newKeys[head + c]
+          ? dp[(r + 1) * width + c + 1] + 1
+          : Math.max(dp[(r + 1) * width + c], dp[r * width + c + 1]);
+      }
+    }
+    r = 0;
+    c = 0;
+    while (r < rows && c < cols) {
+      if (oldKeys[head + r] === newKeys[head + c]) {
+        match[head + c] = head + r;
+        r++;
+        c++;
+      } else if (dp[(r + 1) * width + c] >= dp[r * width + c + 1]) {
+        r++;
+      } else {
+        c++;
+      }
+    }
+    return match;
+  }
+
+  /* 服务端渲染的回退路径给的是整篇 HTML，没有身份信息可言。按顶层元素切块，身份就用
+     它自己的 HTML——服务端不写行号，块内的 HTML 不随前后文变化，够用；块之间的
+     空白文本节点跟着前一块走，别为它单独建一块。 */
+  function blocksFromHtml(html) {
+    var blocks = [];
+    parseNodes(html || '').forEach(function (node) {
+      var last = blocks[blocks.length - 1];
+      if (node.nodeType !== 1 && last) {
+        last.nodes.push(node);
+        return;
+      }
+      var text = node.nodeType === 1 ? node.outerHTML : (node.textContent || '');
+      blocks.push({ key: '\u0000' + text, html: text, nodes: [node] });
+    });
+    return blocks;
+  }
+
+  /* 新的块清单和现在预览里的完全一样（连行号都一样）时，什么都不用做。 */
+  function sameBlocks(blocks) {
+    if (blocks.length !== renderedBlocks.length) {
+      return false;
+    }
+    for (var i = 0; i < blocks.length; i++) {
+      if (blocks[i].key !== renderedBlocks[i].key ||
+          blocks[i].html !== renderedBlocks[i].html) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /* 按对齐结果改 DOM：对得上的块原样留着，其余整段换成新节点。
+     删除放在最后——插入时要靠旧节点定位，边插边删会把参照点弄丢。 */
+  function patchPreview(blocks) {
+    var old = renderedBlocks;
+
+    // 预览的 DOM 只有这里在改。万一它和记录对不上（上次重绘中途报错、别的脚本动过它），
+    // 先整篇清空重来：残留的节点会让后面的对齐一路错位。
+    var tracked = 0;
+    old.forEach(function (block) {
+      tracked += block.nodes.length;
+    });
+    if (preview.childNodes.length !== tracked) {
+      preview.textContent = '';
+      old = [];
+      renderedBlocks = [];
+    }
+
+    var match = alignBlocks(old.map(function (block) { return block.key; }),
+                            blocks.map(function (block) { return block.key; }));
+
+    var built = new Array(blocks.length);
+    var keep = new Array(blocks.length);
+    var used = []; // 旧块里被留下来的那些，其余待删
+
+    for (var j = 0; j < blocks.length; j++) {
+      var at = match[j];
+      var previous = at >= 0 ? old[at] : null;
+      keep[j] = Boolean(previous) &&
+        withoutLineAttrs(previous.html) === withoutLineAttrs(blocks[j].html);
+      if (!keep[j]) {
+        continue;
+      }
+      used[at] = true;
+      syncLineAttrs(previous, blocks[j].html);
+      // html 记成最新的：行号已经写进 DOM 了，下次比较要拿同一份来比
+      built[j] = { key: blocks[j].key, html: blocks[j].html, nodes: previous.nodes };
+    }
+
+    var reference = preview.firstChild;
+    var index = 0;
+    while (index < blocks.length) {
+      if (keep[index]) {
+        var kept = built[index].nodes;
+        reference = kept[kept.length - 1].nextSibling;
+        index++;
+        continue;
+      }
+      // 连续的一段都要换：整段建好一次性插进去，别一块一块地触发排版
+      var stop = index;
+      while (stop < blocks.length && !keep[stop]) {
+        stop++;
+      }
+      var fragment = document.createDocumentFragment();
+      var fresh = [];
+      for (var k = index; k < stop; k++) {
+        built[k] = { key: blocks[k].key, html: blocks[k].html, nodes: parseNodes(blocks[k].html) };
+        fresh.push(built[k]);
+        built[k].nodes.forEach(function (node) {
+          fragment.appendChild(node);
+        });
+      }
+      preview.insertBefore(fragment, reference);
+      // 图片插进文档才会开始加载，量尺寸与挂回调放在这之后才有意义
+      fresh.forEach(function (block) {
+        trackImages(block.nodes);
+      });
+      index = stop;
+    }
+
+    for (var i = 0; i < old.length; i++) {
+      if (used[i]) {
+        continue;
+      }
+      old[i].nodes.forEach(function (node) {
+        node.remove();
+      });
+    }
+    renderedBlocks = built;
+  }
+
+  /* ------------------------------------------------ 图片的尺寸
+
+     图片要解码完才有高度，而预览是每敲几下就重画一次的：不知道尺寸，每张新出现的图
+     都会让文档先塌成一条、再撑开，滚动位置跟着漂。所以记住每张图解码后的像素尺寸，
+     渲染时直接按原比例把位置占住（width / height 属性 + CSS 的 height:auto，
+     浏览器据此算出高度），解码完成时高度已经是对的。
+
+     尺寸有三个来源：上传时现场量（图片本来就在本机，量起来不用等网络）、
+     预览里任何一张图解码完成后记下、以及上一轮渲染留下的记录。地址带随机串，
+     同一张图不会换内容，所以记录不会过期。 */
+
+  function rememberImageSize(img) {
+    var src = img.getAttribute('src');
+    if (!src || !img.naturalWidth || !img.naturalHeight) {
+      return;
+    }
+    imageSizes[src] = { w: img.naturalWidth, h: img.naturalHeight };
+  }
+
+  /* 尺寸已知就写进 width / height 把位置占住，返回是否占了。
+     作者自己在 attr_list 里写了尺寸的（{: width="400"}）不覆盖。 */
+  function stampImageSize(img) {
+    if (img.hasAttribute('width') || img.hasAttribute('height')) {
+      return false;
+    }
+    var size = imageSizes[img.getAttribute('src')];
+    if (!size) {
+      return false;
+    }
+    img.setAttribute('width', size.w);
+    img.setAttribute('height', size.h);
+    return true;
+  }
+
+  /* 新块里的每张图：已量过的当场占位；没量过的等解码完成记下尺寸，
+     那时文档会真的长高，按锚点把画面摆回原处（见 resyncScroll）。 */
+  function trackImages(nodes) {
+    nodes.forEach(function (node) {
+      if (node.nodeType !== 1) {
+        return;
+      }
+      var images = node.tagName === 'IMG' ? [node] : node.querySelectorAll('img');
+      Array.prototype.forEach.call(images, function (img) {
+        if (stampImageSize(img)) {
+          return; // 尺寸已知，高度不会再有变化
+        }
+        if (img.complete) {
+          rememberImageSize(img); // 缓存里没有但它已经解得完（同页别处出现过）
+          stampImageSize(img);
+          return;
+        }
+        var settle = function () {
+          rememberImageSize(img);
+          stampImageSize(img);
+          resyncScroll();
+        };
+        img.addEventListener('load', settle, { once: true });
+        img.addEventListener('error', settle, { once: true });
+      });
+    });
+  }
+
+  /* 量一张本地文件的像素尺寸。失败（图坏了、浏览器不支持）返回 null，
+     调用方按「等解码完再说」走。 */
+  function measureImage(file) {
+    return new Promise(function (resolve) {
+      var url = URL.createObjectURL(file);
+      var probe = new Image();
+      function done(size) {
+        URL.revokeObjectURL(url);
+        resolve(size);
+      }
+      probe.onload = function () {
+        done({ w: probe.naturalWidth, h: probe.naturalHeight });
+      };
+      probe.onerror = function () {
+        done(null);
+      };
+      probe.src = url;
+    });
+  }
+
+  /* 把新的块清单画进预览。没变化就什么都不做；只变了行号的话，DOM 一个节点都不换。 */
+  function paintPreview(blocks) {
+    if (!blocks || !blocks.length) {
+      blocks = [{ key: '\u0000empty', html: EMPTY_PREVIEW }];
+    }
+    if (sameBlocks(blocks)) {
+      return; // 内容没变，省一次位置抖动
+    }
+
+    // 重绘前先记下「现在看到的是哪一块的哪个位置」，高度变了也能摆回去
     var snapshot = captureScroll(preview);
-    paintedHtml = html;
-    preview.innerHTML = html;
+    var anchor = captureAnchor();
+    patchPreview(blocks);
     refreshPreviewPad(); // 末块高度变了，文末留白要跟着重算（它决定了预览能滚多远）
 
-    // DOM 换了，锚点表要重算。若最近是编辑框在滚，就把预览对回编辑框的位置；
-    // 否则（用户在滚预览 / 窄屏堆叠）保持原来的滚动位置不动。
+    // DOM 变了，锚点表要重算。若最近是编辑框在滚，就把预览对回编辑框的位置；
+    // 否则（用户在滚预览 / 窄屏堆叠）把原来看到的画面摆在原地。
     rebuildAnchors();
     if (syncSource === 'editor' && !panesStacked() && anchors.length) {
       applyScroll(preview, editorToPreview());
-    } else {
-      restoreScroll(preview, snapshot);
+    } else if (snapshot.atBottom) {
+      restoreScroll(preview, snapshot); // 贴底就继续贴底
+    } else if (!restoreAnchor(anchor)) {
+      restoreScroll(preview, snapshot); // 锚点块正好被换掉了，退回按像素位置还原
     }
-
-    Array.prototype.forEach.call(preview.querySelectorAll('img'), function (img) {
-      if (img.complete) {
-        return; // 已解码，高度已定
-      }
-      var settle = function () {
-        // 图片要等解码完才有高度，但那可能发生在很久以后：
-        // 若期间又重绘过（token 变了）或预览已隐藏，就不要再动滚动位置。
-        if (token !== paintToken || !previewVisible) {
-          return;
-        }
-        refreshPreviewPad(); // 图片把末块撑高了，留白要跟着变
-        rebuildAnchors();
-        if (syncSource === 'editor' && !panesStacked()) {
-          applyScroll(preview, editorToPreview());
-        } else if (Math.abs(preview.scrollTop - snapshot.written) <= 1) {
-          restoreScroll(preview, snapshot);
-        }
-      };
-      img.addEventListener('load', settle, { once: true });
-      img.addEventListener('error', settle, { once: true });
-    });
+    stickyAnchor = captureAnchor(); // 之后图片解码完，按这个锚点把画面摆回来
   }
 
   /* 把正文渲染到右侧预览栏。默认本地渲染：整篇正文不出浏览器，也没有等待服务器的延迟。
@@ -485,7 +830,10 @@
 
     var local = window.BlogMarkdown;
     if (local && local.available) {
-      paintPreview(local.render(textarea.value) || EMPTY_PREVIEW);
+      // 本地渲染给的是「块」而不是整篇 HTML，只重画改过的那几块（见「增量重绘」）
+      paintPreview(local.blocks
+        ? local.blocks(textarea.value)
+        : blocksFromHtml(local.render(textarea.value) || EMPTY_PREVIEW));
       // 只清掉上一次的渲染错误，不影响「已插入图片」这类提示。
       if (status && status.classList.contains('is-error')) {
         setStatus('');
@@ -512,7 +860,7 @@
         if (seq !== previewSeq || !previewVisible) {
           return;
         }
-        paintPreview(result.html || EMPTY_PREVIEW);
+        paintPreview(blocksFromHtml(result.html || EMPTY_PREVIEW));
         // 只清掉上一次的渲染错误，不影响「已插入图片」这类提示。
         if (status && status.classList.contains('is-error')) {
           setStatus('');
@@ -619,11 +967,7 @@
       window.clearTimeout(rulerTimer);
       rulerTimer = window.setTimeout(function () {
         refreshLineTops();
-        refreshPreviewPad();
-        rebuildAnchors();
-        if (syncSource === 'editor' && !panesStacked()) {
-          applyScroll(preview, editorToPreview());
-        }
+        resyncScroll();
       }, 150);
     });
 
@@ -631,10 +975,7 @@
     if (window.ResizeObserver) {
       new ResizeObserver(function () {
         refreshLineTops();
-        rebuildAnchors();
-        if (syncSource === 'editor' && !panesStacked()) {
-          applyScroll(preview, editorToPreview());
-        }
+        resyncScroll();
       }).observe(textarea);
     }
 
@@ -658,14 +999,20 @@
       }
 
       setStatus('上传中…');
-      upload(file)
-        .then(function (result) {
-          if (result.ok) {
-            insertBlock(result.markdown);
-            setStatus('已插入 ' + result.url);
-          } else {
+      // 量尺寸和上传一起做：图片本来就在本机，量起来不用等网络。插入正文时尺寸已经
+      // 在手，预览能在解码之前就按原比例把位置占住（见「图片的尺寸」），不会先塌后跳。
+      Promise.all([upload(file), measureImage(file)])
+        .then(function (results) {
+          var result = results[0];
+          if (!result.ok) {
             setStatus(result.error || '上传失败', true);
+            return;
           }
+          if (results[1]) {
+            imageSizes[result.url] = results[1];
+          }
+          insertBlock(result.markdown);
+          setStatus('已插入 ' + result.url);
         })
         .catch(function () {
           setStatus('上传失败，请检查网络后重试', true);
@@ -701,6 +1048,7 @@
         restoreScroll(preview, stashedScroll);
       }
       renderPreview();
+      stickyAnchor = captureAnchor(); // 隐藏期间坐标没有意义，重新显示后重取一个
     });
   }
 
