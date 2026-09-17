@@ -144,8 +144,8 @@ def article_detail(slug: str):
         article=article,
         older_article=older,
         newer_article=newer,
-        # 悬浮目录的「文集」页直接复用这份列表：顺序与上一篇/下一篇一致
-        collection_articles=siblings,
+        # 悬浮目录的「文集」页直接复用这份列表；index从小到大对应文章从旧到新排序
+        collection_articles=siblings[::-1],
         collection_total=len(siblings),
     )
 
