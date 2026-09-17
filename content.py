@@ -50,8 +50,6 @@ DEFAULT_COLLECTION = "未归档"
 _root: Path | None = None
 _cache: dict[str, Any] | None = None
 _cache_stamp: float | None = None
-_upload_sizes: dict[str, list[int]] | None = None
-_upload_stamp: float | None = None
 _lock = threading.Lock()
 _local = threading.local()
 
@@ -71,12 +69,10 @@ def content_dir() -> Path:
 
 def invalidate() -> None:
     """令缓存失效，下一次读取时重建。写入内容后调用。"""
-    global _cache, _cache_stamp, _upload_sizes, _upload_stamp
+    global _cache, _cache_stamp
     with _lock:
         _cache = None
         _cache_stamp = None
-        _upload_sizes = None
-        _upload_stamp = None
 
 
 # ---------------------------------------------------------------- Markdown
@@ -517,54 +513,6 @@ def _store() -> dict[str, Any]:
         }
         _cache_stamp = stamp
         return _cache
-
-
-# ---------------------------------------------------------------- 上传图片尺寸
-
-
-def upload_sizes() -> dict[str, list[int]]:
-    """``uploads`` 目录下每张图片的尺寸：``{"2026/09/x.png": [宽, 高]}``。
-
-    只服务后台编辑器。预览每次重绘都会重建整棵 DOM，图片若是「先是 0 高、解码完才
-    变高」，预览的高度就会先塌下去再长回来，滚动位置跟着被顶走。编辑器拿这份尺寸
-    给 ``<img>`` 补上 width/height，浏览器先撑出占位盒，高度从头就是定值（见
-    ``static/js/admin.js`` 的 ``reserveImageSpace``）。
-
-    刻意不并进上面的 ``_store()``：那份缓存每次保存文章都要重建，而这里得逐个打开
-    图片文件，热盘约 0.05ms/张、冷盘首次约 10ms/张（实测 42 张：热 2.3ms / 冷 400ms），
-    不该让写作路径替它买单。改成就地缓存，键是 uploads 目录树的最新 mtime——
-    与内容缓存同一套失效规则，新上传一张图即自动过期。
-    """
-    global _upload_sizes, _upload_stamp
-
-    try:
-        from PIL import Image
-    except ImportError:  # 没装 Pillow：退回「等图片解码」，编辑照常可用
-        return {}
-
-    root = content_dir() / "uploads"
-    stamp = _tree_stamp(root)
-
-    with _lock:
-        if _upload_sizes is not None and _upload_stamp == stamp:
-            return _upload_sizes
-
-        sizes: dict[str, list[int]] = {}
-        for path in sorted(root.rglob("*")):
-            if not path.is_file():
-                continue
-            try:
-                # Image.open 只读文件头，不解码像素
-                with path.open("rb") as handle:
-                    width, height = Image.open(handle).size
-            except Exception:  # noqa: BLE001 - 非图片、损坏文件一律跳过
-                continue
-            if width and height:
-                sizes[path.relative_to(root).as_posix()] = [width, height]
-
-        _upload_sizes = sizes
-        _upload_stamp = stamp
-        return sizes
 
 
 # ---------------------------------------------------------------- 查询 API

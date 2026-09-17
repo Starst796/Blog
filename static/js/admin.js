@@ -5,8 +5,8 @@
       后台列表据此给对应条目挂上「恢复 / 丢弃」
    页面里只存在其中之一也能正常工作。
 
-   图片占位尺寸紧跟在 upload() 后面（尺寸有两个来源：上传接口的返回值、服务端清单
-   /admin/uploads/sizes；预览重绘时补到 <img> 上），它只依赖上传流程，与第 2、3 节无关。
+   图片占位尺寸紧跟在 upload() 后面（尺寸由上传接口返回，预览重绘时补到 <img> 上），
+   它只依赖上传流程，与第 2、3 节无关。
 
    预览默认在浏览器本地渲染（static/js/markdown-local.js），编辑过程不发任何请求，
    出图速度只取决于本机；本地渲染不可用时（依赖没加载上）退回服务端 /admin/preview。 */
@@ -34,23 +34,17 @@
     });
   }
 
-  /* 预览里给 <img> 补 width/height，是为了让浏览器先撑出正确大小的占位盒：
-     图片解码前后高度一致，重绘时才不会「先塌下去再长回来」把滚动位置顶走。
-     尺寸有两个来源——
+  /* 上传接口会顺带返回图片的宽高（后端本来就用 PIL 解过一次图，白拿）。
+     记下来是为了在预览里给 <img> 补上 width/height：浏览器据此先撑出正确大小的
+     占位盒，图片解码前后高度一致——重绘时就不会出现「图片陆续到位、预览高度
+     反复变化、滚动位置被拽走」的情况。
 
-       1) 上传接口的返回值（后端本来就用 PIL 解过一次图，白拿）：记进 sessionStorage，
-          保存后整页重渲染、手滑按了刷新都还认得出来，关掉标签页即失效；只装本次
-          会话上传的图，所以给个上限就够。
-       2) 服务端给的存量清单（/admin/uploads/sizes）：文章里的旧图不在 (1) 里，
-          而它们恰恰是日常编辑时最常碰到的那些图。清单每次打开编辑页重新取，只放
-          内存，不与 (1) 争那 200 个名额。
-
-     两个来源都没有的（外链图）仍然按老样子等解码——正好是回退行为，不需要额外分支。 */
+     存在 sessionStorage：保存后整页重渲染、手滑按了刷新都还认得出来，关掉标签页
+     即失效。认得出来的只有本次会话上传过的图，外链图与更早之前上传的图没有尺寸，
+     仍然按老样子等解码（正好是回退行为，不需要额外分支）。 */
   var IMAGE_SIZE_KEY = 'editor-image-size';
   var IMAGE_SIZE_LIMIT = 200; // 一次编辑远用不到这些，顺带给这个键封个上界
-  var IMAGE_SIZE_DEADLINE = 1500; // 等清单的上限，超时就先画，不让预览干等接口
-  var imageSizes = null; // 本次会话学到的：{ '/uploads/2026/09/x.png': [宽, 高] }
-  var manifestSizes = null; // 服务端清单：同一个键的形状，只在内存里
+  var imageSizes = null; // { '/uploads/2026/09/x.png': [宽, 高] }
 
   function imageSizeStore() {
     if (imageSizes) {
@@ -103,53 +97,6 @@
     }
     path = path.replace(/^\.?\//, '/');
     return path.charAt(0) === '/' ? path : '/' + path;
-  }
-
-  /* 按预览里 <img> 的 src 找尺寸：先看本次会话记录的，再看服务端清单。 */
-  function lookupImageSize(src) {
-    var key = imageSizeKey(src);
-    if (!key) {
-      return null;
-    }
-    var mine = imageSizeStore()[key];
-    if (mine) {
-      return mine;
-    }
-    return (manifestSizes && manifestSizes[key]) || null;
-  }
-
-  /* 取一次存量图片的尺寸清单，供第一遍预览使用。
-
-     为什么非要等它：不等的话，第一遍画出来的旧图全是 0 高，等图片解码完高度再长
-     回来，滚动位置已经被顶走一次了——打开一篇有图的文章时每次都会发生。
-     只认本次会话上传过的图救不了这个场景（旧文章里的图一张都不在里面）。
-
-     取不到（离线、接口报错）就直接画，退回改动前的行为。 */
-  function primeImageSizes() {
-    return fetch('/admin/uploads/sizes', { credentials: 'same-origin' })
-      .then(function (response) {
-        return response.ok ? response.json() : null;
-      })
-      .then(function (payload) {
-        if (payload && payload.sizes) {
-          manifestSizes = payload.sizes;
-        }
-      })
-      .catch(function () {
-        /* 拿不到清单不影响编辑，只是预览里少预留几处位置 */
-      });
-  }
-
-  /* 给 promise 加个上限：超时就当它已完成，别让预览一直空着等接口。 */
-  function withDeadline(promise, ms) {
-    return new Promise(function (resolve) {
-      var timer = window.setTimeout(resolve, ms);
-      var finish = function () {
-        window.clearTimeout(timer);
-        resolve();
-      };
-      promise.then(finish, finish);
-    });
   }
 
   /* ------------------------------------------------ 1. Markdown 编辑器 */
@@ -562,12 +509,13 @@
      宽高只落在 DOM 上，不写进渲染出来的 HTML 字符串（paintedHtml 的比对不受影响）。
      作者自己写了 width/height 的（markdown-it-attrs 的写法）不动，尊重原文。 */
   function reserveImageSpace() {
+    var store = imageSizeStore();
     Array.prototype.forEach.call(preview.querySelectorAll('img'), function (img) {
       img.setAttribute('decoding', 'async');
       if (img.hasAttribute('width') || img.hasAttribute('height')) {
         return;
       }
-      var size = lookupImageSize(img.getAttribute('src'));
+      var size = store[imageSizeKey(img.getAttribute('src'))];
       if (!size) {
         return;
       }
@@ -601,17 +549,10 @@
       if (img.complete) {
         return; // 已解码，高度已定
       }
-      // 占位盒刚撑好，这就是「解码完成后应该有」的高度
-      var expected = img.getBoundingClientRect().height;
       var settle = function () {
         // 图片要等解码完才有高度，但那可能发生在很久以后：
         // 若期间又重绘过（token 变了）或预览已隐藏，就不要再动滚动位置。
         if (token !== paintToken || !previewVisible) {
-          return;
-        }
-        // 高度没变：说明尺寸一开始就摆对了（上传过的图、清单里的旧图都属此类），
-        // 下面这些重算纯属空转——更要紧的是它们会去写滚动位置，把预览拽走。
-        if (Math.abs(img.getBoundingClientRect().height - expected) <= 1) {
           return;
         }
         refreshPreviewPad(); // 图片把末块撑高了，留白要跟着变
@@ -800,15 +741,7 @@
 
     // 首次进入即渲染已有正文，编辑旧文章时预览与输入框内容一致。
     refreshLineTops();
-    /* 正文里真有 uploads 图片时才值得先等尺寸清单：没图的新建页白等一次往返。
-       第一遍就得画对，理由见 primeImageSizes。 */
-    if (/\/uploads\//.test(textarea.value)) {
-      withDeadline(primeImageSizes(), IMAGE_SIZE_DEADLINE).then(function () {
-        schedulePreview(0);
-      });
-    } else {
-      schedulePreview(0);
-    }
+    schedulePreview(0);
     // 上一页如果是保存后跳回来的，位置按提交前记下的还原；预览会跟着一起归位
     restoreSpot(takeSpot());
   }
