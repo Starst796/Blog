@@ -5,6 +5,9 @@
       后台列表据此给对应条目挂上「恢复 / 丢弃」
    页面里只存在其中之一也能正常工作。
 
+   图片占位尺寸紧跟在 upload() 后面（尺寸由上传接口返回，预览重绘时补到 <img> 上），
+   它只依赖上传流程，与第 2、3 节无关。
+
    预览默认在浏览器本地渲染（static/js/markdown-local.js），编辑过程不发任何请求，
    出图速度只取决于本机；本地渲染不可用时（依赖没加载上）退回服务端 /admin/preview。 */
 (function () {
@@ -29,6 +32,71 @@
         return { ok: false, error: '服务返回异常（HTTP ' + response.status + '）' };
       });
     });
+  }
+
+  /* 上传接口会顺带返回图片的宽高（后端本来就用 PIL 解过一次图，白拿）。
+     记下来是为了在预览里给 <img> 补上 width/height：浏览器据此先撑出正确大小的
+     占位盒，图片解码前后高度一致——重绘时就不会出现「图片陆续到位、预览高度
+     反复变化、滚动位置被拽走」的情况。
+
+     存在 sessionStorage：保存后整页重渲染、手滑按了刷新都还认得出来，关掉标签页
+     即失效。认得出来的只有本次会话上传过的图，外链图与更早之前上传的图没有尺寸，
+     仍然按老样子等解码（正好是回退行为，不需要额外分支）。 */
+  var IMAGE_SIZE_KEY = 'editor-image-size';
+  var IMAGE_SIZE_LIMIT = 200; // 一次编辑远用不到这些，顺带给这个键封个上界
+  var imageSizes = null; // { '/uploads/2026/09/x.png': [宽, 高] }
+
+  function imageSizeStore() {
+    if (imageSizes) {
+      return imageSizes;
+    }
+    imageSizes = {};
+    try {
+      var saved = JSON.parse(sessionStorage.getItem(IMAGE_SIZE_KEY));
+      if (saved && typeof saved === 'object') {
+        imageSizes = saved;
+      }
+    } catch (error) {
+      /* 读不到就是没记过，顶多少预留一处位置，不影响编辑 */
+    }
+    return imageSizes;
+  }
+
+  function rememberImageSize(url, width, height) {
+    if (!url || !(width > 0) || !(height > 0)) {
+      return;
+    }
+    var store = imageSizeStore();
+    delete store[url]; // 重记的挪到末尾，淘汰时先丢最旧的
+    store[url] = [width, height];
+
+    var keys = Object.keys(store);
+    while (keys.length > IMAGE_SIZE_LIMIT) {
+      delete store[keys.shift()];
+    }
+    try {
+      sessionStorage.setItem(IMAGE_SIZE_KEY, JSON.stringify(store));
+    } catch (error) {
+      /* 写不进去只影响刷新之后的预留，本次预览照常 */
+    }
+  }
+
+  /* 预览里 <img> 的 src 与上面的键对齐：去掉查询串、片段与同源前缀，补上开头斜杠，
+     于是 uploads/x.png、/uploads/x.png、https://本站/uploads/x.png 都能对上。 */
+  function imageSizeKey(src) {
+    if (!src) {
+      return '';
+    }
+    var path = String(src).split('#')[0].split('?')[0];
+    if (path.indexOf('://') >= 0) {
+      try {
+        path = new URL(path, location.href).pathname;
+      } catch (error) {
+        return '';
+      }
+    }
+    path = path.replace(/^\.?\//, '/');
+    return path.charAt(0) === '/' ? path : '/' + path;
   }
 
   /* ------------------------------------------------ 1. Markdown 编辑器 */
@@ -78,7 +146,9 @@
 
   /* 重绘预览会让滑块位置变：整体替换 innerHTML 后滚动位置可能被重置或被新内容长度钳住，
      图片、代码块又要等解码/排版完成才有高度，之后还会再漂一次。
-     办法是重绘前记下滚动位置，重绘后原样还原；还原是幂等的，图片加载完成后再调一次即可。 */
+     办法是重绘前记下滚动位置，重绘后原样还原；还原是幂等的，图片加载完成后再调一次即可。
+     上传过的图片因为补了占位尺寸（reserveImageSpace），一般不会再漂第二下；
+     外链图与没有尺寸记录的图仍然走这条还原路径。 */
   function captureScroll(element) {
     var max = element.scrollHeight - element.clientHeight;
     return {
@@ -429,6 +499,31 @@
     }
   }
 
+  /* 重绘后立刻给预览里的图片撑出占位盒。
+
+     为什么要赶在量留白、算锚点之前：这两件事量的都是像素高度，图片一旦「先是 0 高、
+     解码完再变高」，量出来的坐标当场就作废，只能等每张图的 load 回调再修一遍——
+     插入一张图、其他图跟着陆续到位，预览就会连着抖好几下。先给出正确尺寸，
+     高度从头就是定值，后面那些延迟修正都成了空转。
+
+     宽高只落在 DOM 上，不写进渲染出来的 HTML 字符串（paintedHtml 的比对不受影响）。
+     作者自己写了 width/height 的（markdown-it-attrs 的写法）不动，尊重原文。 */
+  function reserveImageSpace() {
+    var store = imageSizeStore();
+    Array.prototype.forEach.call(preview.querySelectorAll('img'), function (img) {
+      img.setAttribute('decoding', 'async');
+      if (img.hasAttribute('width') || img.hasAttribute('height')) {
+        return;
+      }
+      var size = store[imageSizeKey(img.getAttribute('src'))];
+      if (!size) {
+        return;
+      }
+      img.setAttribute('width', String(size[0]));
+      img.setAttribute('height', String(size[1]));
+    });
+  }
+
   function paintPreview(html) {
     if (html === paintedHtml) {
       return; // 内容没变就别重绘，省一次滚动位置抖动
@@ -438,6 +533,7 @@
     var snapshot = captureScroll(preview);
     paintedHtml = html;
     preview.innerHTML = html;
+    reserveImageSpace(); // 占位盒先撑到位，下面的留白与锚点量的才是最终高度
     refreshPreviewPad(); // 末块高度变了，文末留白要跟着重算（它决定了预览能滚多远）
 
     // DOM 换了，锚点表要重算。若最近是编辑框在滚，就把预览对回编辑框的位置；
@@ -661,6 +757,8 @@
       upload(file)
         .then(function (result) {
           if (result.ok) {
+            // 先记尺寸再插入正文：这次重绘就要用上，晚一步新图就会先按 0 高度排一遍
+            rememberImageSize(result.url, result.width, result.height);
             insertBlock(result.markdown);
             setStatus('已插入 ' + result.url);
           } else {
