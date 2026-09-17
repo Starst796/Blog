@@ -640,11 +640,7 @@ def upload_image():
     try:
         from PIL import Image
 
-        probe = Image.open(upload.stream)
-        # 尺寸在打开时就从头信息里读到了，先取出来再 verify（verify 之后图像不可再用）。
-        # 编辑器预览要拿它给 <img> 预留占位盒，见 static/js/admin.js 的 reserveImageSpace。
-        size = probe.size
-        probe.verify()
+        Image.open(upload.stream).verify()
         upload.stream.seek(0)
     except Exception:  # noqa: BLE001 - 任何解码失败都视为非法文件
         return {"ok": False, "error": "文件不是有效的图片。"}, 400
@@ -660,16 +656,8 @@ def upload_image():
 
     relative = (relative_dir / name).as_posix()
     url = f"{content.MEDIA_URL_PREFIX}/{relative}"
-    logger.info("上传图片：%s（%sx%s）", relative, size[0], size[1])
-    return {
-        "ok": True,
-        "path": relative,
-        "url": url,
-        # 宽高供编辑器预览预留占位盒，避免图片解码前后高度变化把预览顶得抖动
-        "width": size[0],
-        "height": size[1],
-        "markdown": f"![{stem}]({url})",
-    }
+    logger.info("上传图片：%s", relative)
+    return {"ok": True, "path": relative, "url": url, "markdown": f"![{stem}]({url})"}
 
 
 @bp.post("/preview")
