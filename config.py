@@ -79,6 +79,8 @@ class Config:
     # ---------- 列表 ----------
     PAGE_SIZE = int(os.environ.get("PAGE_SIZE", "10"))
     HOMEPAGE_LIMIT = int(os.environ.get("HOMEPAGE_LIMIT", "3"))
+    # atom.xml 订阅源中包含的最新文章条数
+    FEED_LIMIT = int(os.environ.get("FEED_LIMIT", "20"))
 
     # ---------- 登录限流 ----------
     LOGIN_ATTEMPT_IP_LIMIT = int(os.environ.get("LOGIN_ATTEMPT_IP_LIMIT", "8"))

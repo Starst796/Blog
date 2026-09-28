@@ -313,6 +313,7 @@ links:
 | `SESSION_COOKIE_SECURE` | `true` | 生产 https 必须为 `1`；本地 http 调试设为 `0` |
 | `PAGE_SIZE` | `10` | 文章列表每页篇数 |
 | `HOMEPAGE_LIMIT` | `3` | 主页展示的项目数与文章数 |
+| `FEED_LIMIT` | `20` | `atom.xml` 订阅源包含的最新文章条数 |
 | `LOGIN_ATTEMPT_IP_LIMIT` | `8` | 登录失败限流阈值（次） |
 | `LOGIN_ATTEMPT_IP_WINDOW` | `300` | 限流窗口（秒） |
 | `SECRET_KEY` | 自动生成 | 由 `manage.py init` 写入，**不要手工填写，也不要提交** |

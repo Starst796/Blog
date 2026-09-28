@@ -191,7 +191,7 @@ def sitemap():
 
 @bp.get("/atom.xml")
 def atom():
-    articles = content.list_articles(limit=20)
+    articles = content.list_articles(limit=current_app.config["FEED_LIMIT"])
     # 订阅源顶层的 <updated> 取全部条目中最新的修订时刻，没有文章时退回今天零点
     updated = max(
         (item.modified for item in articles),
