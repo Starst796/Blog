@@ -6,7 +6,8 @@
    执行部署时不会覆盖线上写作的内容；代码发布与内容发布彻底解耦。
 2. front matter 使用 YAML，正文使用 Markdown，无需数据库，可直接用 git 版本化。
 3. 进程内缓存，依据内容树的最大 mtime 自动失效——写入后下一次读取即刷新，
-   ``invalidate()`` 用于显式失效。该策略在多 worker 下同样正确。
+   ``invalidate()`` 用于显式失效。该策略在多 worker 下同样正确。全树扫描会被
+   一个很短的 TTL 节流，避免每次读取都重新遍历内容目录。
 4. 读盘失败或 front matter 非法时跳过该文件并记录告警，绝不因单篇文章导致整站 500。
 
 目录约定::
@@ -21,9 +22,11 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import subprocess
 import threading
+import time as _time
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
 from pathlib import Path
@@ -53,6 +56,13 @@ _cache_stamp: float | None = None
 _lock = threading.Lock()
 _local = threading.local()
 
+# _tree_stamp() 需要遍历整棵内容树，代价随文件数线性增长，而一次页面渲染会多次
+# 调用 _store()；这里缓存最近一次扫描结果，避免重复扫描。写入路径会调用
+# invalidate() 显式失效，因此内容编辑后仍是即时可见的。
+_STAMP_TTL_SECONDS = 2.0
+_stamp_value: float = 0.0
+_stamp_checked_at: float = 0.0
+
 
 def init(content_dir: Path | str) -> None:
     """指定内容根目录。应在应用工厂中调用一次。"""
@@ -69,10 +79,11 @@ def content_dir() -> Path:
 
 def invalidate() -> None:
     """令缓存失效，下一次读取时重建。写入内容后调用。"""
-    global _cache, _cache_stamp
+    global _cache, _cache_stamp, _stamp_checked_at
     with _lock:
         _cache = None
         _cache_stamp = None
+        _stamp_checked_at = 0.0
 
 
 # ---------------------------------------------------------------- Markdown
@@ -484,18 +495,34 @@ def _load_site(root: Path) -> dict[str, Any]:
 
 
 def _tree_stamp(root: Path) -> float:
-    """内容树中最新修改时间，用于判断缓存是否过期。"""
+    """内容树中最新修改时间，用于判断缓存是否过期。
+
+    扫描整棵内容树（含大量上传文件）开销不小，因此结果在 _STAMP_TTL_SECONDS 内
+    复用，避免单次请求里多次 _store() 重复扫描；写入后由 invalidate() 立即失效。
+    `.git` 等隐藏目录不属于内容，直接剪枝跳过。
+    """
+    global _stamp_value, _stamp_checked_at
+
+    now = _time.monotonic()
+    if _stamp_checked_at and now - _stamp_checked_at < _STAMP_TTL_SECONDS:
+        return _stamp_value
+
     latest = 0.0
-    if not root.exists():
-        return latest
-    for path in root.rglob("*"):
-        if path.is_file():
-            try:
-                mtime = path.stat().st_mtime
-            except OSError:
-                continue
-            if mtime > latest:
-                latest = mtime
+    if root.exists():
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [name for name in dirnames if not name.startswith(".")]
+            for name in filenames:
+                if name.startswith("."):
+                    continue
+                try:
+                    mtime = os.stat(os.path.join(dirpath, name)).st_mtime
+                except OSError:
+                    continue
+                if mtime > latest:
+                    latest = mtime
+
+    _stamp_value = latest
+    _stamp_checked_at = now
     return latest
 
 
