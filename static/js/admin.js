@@ -1575,7 +1575,111 @@
     });
   }
 
-  /* ------------------------------------------------ 1.2 导入 / 导出 md
+  /* ------------------------------------------------ 1.2 键盘缩进
+
+     Tab 插入四个空格（顶掉浏览器默认的「把焦点移出编辑框」）；Ctrl/Cmd+Shift+Space 插入一个
+     &emsp; 实体，用来在 Markdown 里做全角缩进。这两个都按普通输入处理，有选区就替换选区；
+     要按行缩进请用 Ctrl/Cmd+] / Ctrl/Cmd+[。Ctrl/Cmd+] / Ctrl/Cmd+[ 针对选区所在的
+     每一行整体加减一份缩进：加是四个空格，减优先摘一个制表符、否则最多摘四个空格，
+     摘到行首为止，不会变成负缩进。
+
+     &emsp; 没用更顺手的 Ctrl+Tab：那是浏览器 / 系统切换标签页的组合，按键到不了页面。
+     Shift+Space 与 Ctrl+Space（输入法切换）都不打扰，故选 Ctrl/Cmd+Shift+Space。
+
+     选区跨到哪些行就处理哪些行；只把光标放上去（没有选区）时，就是光标所在的这一行。
+     缩进后按每行净增减的字符数把光标 / 选区平移回去，反复按也不会跳位。 */
+
+  var INDENT = '    ';        // 一份缩进 = 四个空格
+  var EMP_SPACER = '&emsp;';  // Ctrl/Cmd+Shift+Space 插入的全角空格实体
+
+  /* 摘掉行首一份缩进：先看制表符，再最多摘四个空格（不足四个就摘到行首）。 */
+  function stripOneIndent(line) {
+    if (line.charAt(0) === '\t') {
+      return line.slice(1);
+    }
+    var spaces = 0;
+    while (spaces < INDENT.length && line.charAt(spaces) === ' ') {
+      spaces += 1;
+    }
+    return line.slice(spaces);
+  }
+
+  /* 把一个原始偏移量映射到缩进后的偏移量：先加上这一行之前所有行的净增减（shift），
+     落在某一行内部时，再按该行的增减量平移，并用新的行首 / 行尾夹一下，免得光标跑到行外。 */
+  function shiftOffset(offset, base, lines, shifts) {
+    var pos = base;
+    var shift = 0;
+    for (var i = 0; i < lines.length; i += 1) {
+      var lineStart = pos;
+      var lineEnd = pos + lines[i].length;
+      if (offset < lineStart) {
+        return offset + shift;
+      }
+      if (offset <= lineEnd) {
+        return Math.min(
+          Math.max(offset + shift + shifts[i], lineStart + shift),
+          lineEnd + shift + shifts[i]
+        );
+      }
+      shift += shifts[i];
+      pos = lineEnd + 1; // 跳过行尾换行符
+    }
+    return offset + shift;
+  }
+
+  function changeIndent(delta) {
+    var range = lineRange();
+    var lines = textarea.value.slice(range.start, range.end).split('\n');
+    var shifts = [];
+    var next = lines.map(function (line) {
+      if (delta > 0) {
+        shifts.push(INDENT.length);
+        return INDENT + line;
+      }
+      var stripped = stripOneIndent(line);
+      shifts.push(stripped.length - line.length); // 负数：这一行少掉的字符数
+      return stripped;
+    });
+
+    var text = next.join('\n');
+    var start = shiftOffset(textarea.selectionStart, range.start, lines, shifts);
+    var end = shiftOffset(textarea.selectionEnd, range.start, lines, shifts);
+    replaceRange(range.start, range.end, text, start, end);
+  }
+
+  if (textarea) {
+    textarea.addEventListener('keydown', function (event) {
+      var mod = event.ctrlKey || event.metaKey;
+      var space = event.key === ' ' || event.code === 'Space';
+
+      // Ctrl/Cmd+Shift+Space：插入全角空格实体
+      if (mod && event.shiftKey && !event.altKey && space) {
+        event.preventDefault();
+        replaceRange(textarea.selectionStart, textarea.selectionEnd, EMP_SPACER);
+        return;
+      }
+
+      // Tab（不带修饰键）：插入四个空格，别把焦点移出编辑框
+      if (event.key === 'Tab' && !mod && !event.shiftKey && !event.altKey) {
+        event.preventDefault();
+        replaceRange(textarea.selectionStart, textarea.selectionEnd, INDENT);
+        return;
+      }
+
+      if (!mod || event.altKey || event.shiftKey) {
+        return;
+      }
+      if (event.key === ']') {
+        event.preventDefault();
+        changeIndent(1);
+      } else if (event.key === '[') {
+        event.preventDefault();
+        changeIndent(-1);
+      }
+    });
+  }
+
+  /* ------------------------------------------------ 1.3 导入 / 导出 md
 
      导出的是「front matter + 正文」的完整文件，格式与 content/ 目录里保存的一致，
      所以导出的文件既能留档，也能直接放回站点；导入时反过来：认识的字段回填表单，
@@ -1854,7 +1958,7 @@
     });
   }
 
-  /* ------------------------------------------------ 1.3 Ctrl+S 保存
+  /* ------------------------------------------------ 1.4 Ctrl+S 保存
 
      浏览器把 Ctrl+S 留给了「保存网页」，对着一份正在写的正文按下去只会弹出另存为
      对话框。拦下来提交当前表单即可——提交前的必填校验、submit 事件上的处理都还是
