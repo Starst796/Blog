@@ -558,10 +558,11 @@ def list_articles(
     include_drafts: bool = False,
     tag: str | None = None,
     collection: str | None = None,
+    query: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> list[Article]:
-    """按发布时间（date + time）倒序返回文章列表，可按文集与标签筛选。
+    """按发布时间（date + time）倒序返回文章列表，可按文集、标签与关键词筛选。
 
     同一时刻的两篇再按 slug 倒序，顺序稳定且可复现。
     """
@@ -576,6 +577,15 @@ def list_articles(
     if tag:
         needle = tag.strip().lower()
         articles = [item for item in articles if needle in {t.lower() for t in item.tags}]
+    if query and (needle := query.strip().casefold()):
+        articles = [
+            item
+            for item in articles
+            if needle
+            in " ".join(
+                (item.slug, item.title, item.summary, item.collection, item.body, *item.tags)
+            ).casefold()
+        ]
 
     articles.sort(key=lambda item: (item.published, item.slug), reverse=True)
 
@@ -587,9 +597,17 @@ def list_articles(
 
 
 def count_articles(
-    *, include_drafts: bool = False, tag: str | None = None, collection: str | None = None
+    *,
+    include_drafts: bool = False,
+    tag: str | None = None,
+    collection: str | None = None,
+    query: str | None = None,
 ) -> int:
-    return len(list_articles(include_drafts=include_drafts, tag=tag, collection=collection))
+    return len(
+        list_articles(
+            include_drafts=include_drafts, tag=tag, collection=collection, query=query
+        )
+    )
 
 
 def get_article(slug: str, *, include_drafts: bool = False) -> Article | None:

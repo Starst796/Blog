@@ -46,6 +46,134 @@
   var fileInput = pick('[data-upload-input]');
   var status = pick('[data-editor-status]');
   var toggle = pick('[data-toggle-preview]');
+  var findToggle = pick('[data-editor-find-toggle]');
+  var findPanel = pick('[data-editor-find]');
+  var findInput = pick('[data-editor-find-query]');
+  var findStatus = pick('[data-editor-find-status]');
+  var findMatches = [];
+  var currentFindMatch = -1;
+
+  function refreshFindMatches(resetCurrent) {
+    if (!textarea || !findInput || !findStatus) {
+      return;
+    }
+
+    var needle = findInput.value;
+    findMatches = [];
+    if (needle) {
+      var source = textarea.value.toLocaleLowerCase();
+      var target = needle.toLocaleLowerCase();
+      var position = 0;
+      while ((position = source.indexOf(target, position)) !== -1) {
+        findMatches.push(position);
+        position += target.length;
+      }
+    }
+
+    if (resetCurrent) {
+      currentFindMatch = -1;
+    } else if (currentFindMatch >= findMatches.length) {
+      currentFindMatch = findMatches.length - 1;
+    }
+
+    findStatus.textContent = findMatches.length
+      ? (currentFindMatch >= 0
+        ? (currentFindMatch + 1) + ' / ' + findMatches.length
+        : findMatches.length + ' 处匹配')
+      : (needle ? '无匹配' : '');
+  }
+
+  function moveToFindMatch(direction) {
+    if (!findMatches.length || !textarea || !findInput) {
+      return;
+    }
+    if (currentFindMatch < 0) {
+      currentFindMatch = direction < 0 ? findMatches.length - 1 : 0;
+    } else {
+      currentFindMatch = (currentFindMatch + direction + findMatches.length) % findMatches.length;
+    }
+
+    var start = findMatches[currentFindMatch];
+    textarea.focus();
+    textarea.setSelectionRange(start, start + findInput.value.length);
+    refreshFindMatches(false);
+  }
+
+  function openFind() {
+    if (!findPanel || !findInput) {
+      return;
+    }
+    findPanel.hidden = false;
+    refreshFindMatches(true);
+    findInput.focus();
+    findInput.select();
+  }
+
+  function closeFind() {
+    if (!findPanel) {
+      return;
+    }
+    findPanel.hidden = true;
+    if (textarea) {
+      textarea.focus();
+    }
+  }
+
+  if (findToggle && findPanel && textarea) {
+    findToggle.addEventListener('click', function () {
+      if (findPanel.hidden) {
+        openFind();
+      } else {
+        closeFind();
+      }
+    });
+
+    findPanel.addEventListener('click', function (event) {
+      var button = event.target.closest('[data-editor-find-prev], [data-editor-find-next], [data-editor-find-close]');
+      if (!button) {
+        return;
+      }
+      if (button.hasAttribute('data-editor-find-close')) {
+        closeFind();
+      } else {
+        moveToFindMatch(button.hasAttribute('data-editor-find-prev') ? -1 : 1);
+      }
+    });
+
+    findInput.addEventListener('input', function () {
+      refreshFindMatches(true);
+    });
+
+    findInput.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        moveToFindMatch(event.shiftKey ? -1 : 1);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        closeFind();
+      }
+    });
+
+    textarea.addEventListener('input', function () {
+      if (!findPanel.hidden) {
+        refreshFindMatches(false);
+      }
+    });
+
+    document.addEventListener('keydown', function (event) {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey ||
+          String(event.key).toLowerCase() !== 'f' ||
+          !editor.contains(event.target)) {
+        return;
+      }
+      event.preventDefault();
+      if (event.target === findInput) {
+        findInput.select();
+      } else {
+        openFind();
+      }
+    });
+  }
 
   var EMPTY_PREVIEW = '<p class="muted">还没有内容。</p>';
   var PREVIEW_DELAY = 120; // 输入停顿多久后重排，纯本地渲染，只是别让每次按键都重画

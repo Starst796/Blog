@@ -73,6 +73,8 @@
               title="导入 Markdown 文件（会替换当前正文）" aria-label="导入 Markdown">↑</button>
       <button class="tool" type="button" data-tool="export-md"
               title="导出 Markdown 文件（含 front matter）" aria-label="导出 Markdown">↓</button>
+      <button class="tool" type="button" data-editor-find-toggle
+              title="在 Markdown 正文中查找（Ctrl+F / Cmd+F）" aria-label="查找正文">⌕</button>
     </div>
 
     <div class="editor-toolbar-end">
@@ -85,6 +87,19 @@
            hidden data-upload-input>
     <input type="file" accept=".md,.markdown,.txt,text/markdown,text/plain"
            hidden data-import-input>
+  </div>
+
+  <div class="editor-find" data-editor-find hidden>
+    <label class="sr-only" for="editor-find-query">在 Markdown 正文中查找</label>
+    <input class="input" id="editor-find-query" type="search"
+           data-editor-find-query placeholder="查找 Markdown 正文…" autocomplete="off">
+    <button class="button button-small button-ghost" type="button"
+            data-editor-find-prev aria-label="上一个匹配项">↑</button>
+    <button class="button button-small button-ghost" type="button"
+            data-editor-find-next aria-label="下一个匹配项">↓</button>
+    <span class="editor-find-status" data-editor-find-status aria-live="polite"></span>
+    <button class="button button-small button-ghost" type="button"
+            data-editor-find-close aria-label="关闭查找">关闭</button>
   </div>
 
   <div class="editor-panes">

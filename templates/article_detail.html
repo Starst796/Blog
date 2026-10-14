@@ -54,6 +54,16 @@
             {% endfor %}
           </p>
         {% endif %}
+        <div class="article-find" data-article-find role="search" aria-label="在本文中查找">
+          <label class="sr-only" for="article-find-query">在本文中查找</label>
+          <input class="input" id="article-find-query" type="search"
+                 data-article-find-query placeholder="在本文中查找…">
+          <button class="button button-small button-ghost" type="button"
+                  data-article-find-prev aria-label="上一个匹配项">↑</button>
+          <button class="button button-small button-ghost" type="button"
+                  data-article-find-next aria-label="下一个匹配项">↓</button>
+          <span class="article-find-status" data-article-find-status aria-live="polite"></span>
+        </div>
       </header>
 
       {% if article.cover %}
@@ -152,5 +162,6 @@
 {% endblock %}
 
 {% block scripts %}
+  <script src="{{ url_for('static', filename='js/article-search.js', v=asset_version) }}" defer></script>
   <script src="{{ url_for('static', filename='js/toc.js', v=asset_version) }}" defer></script>
 {% endblock %}

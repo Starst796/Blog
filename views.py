@@ -96,8 +96,11 @@ def articles():
     per_page = current_app.config["PAGE_SIZE"]
     tag = (request.args.get("tag") or "").strip() or None
     collection = (request.args.get("collection") or "").strip() or None
+    query = (request.args.get("q") or "").strip() or None
     preview = preview_enabled()
-    total = content.count_articles(include_drafts=preview, tag=tag, collection=collection)
+    total = content.count_articles(
+        include_drafts=preview, tag=tag, collection=collection, query=query
+    )
     total_pages = max(1, math.ceil(total / per_page))
     page = min(max(request.args.get("page", type=int) or 1, 1), total_pages)
 
@@ -105,6 +108,7 @@ def articles():
         include_drafts=preview,
         tag=tag,
         collection=collection,
+        query=query,
         limit=per_page,
         offset=(page - 1) * per_page,
     )
@@ -116,6 +120,7 @@ def articles():
         tags=content.list_tags(include_drafts=preview, collection=collection),
         active_collection=collection,
         active_tag=tag,
+        query=query,
         total=total,
         page=page,
         total_pages=total_pages,
