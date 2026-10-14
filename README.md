@@ -158,7 +158,11 @@ cover: uploads/2026/09/cover.png   # 可选，也接受外链
 - **悬浮目录**：详情页右下角有一个可拖动的圆形按钮，点开后在两个页签间切换：
   「本篇目录」列文章的小标题（滚动时会高亮正在读的那一节），
   「文集目录」列同文集的全部文章并标出当前这篇。按钮可以拖到顺手的位置，
-  位置存在读者自己的浏览器里（`localStorage` 键 `toc-fab-pos`），不会影响别人。
+  位置存在读者自己的浏览器里（`localStorage` 键 `toc-fab-pos-v2`，旧键
+  `toc-fab-pos` 会自动迁移），不会影响别人。
+- **在本文中查找**：详情页的搜索按钮与悬浮目录按钮同在一个浮层里（同一列、同一
+  尺寸、右边缘对齐，跟着目录按钮一起移动），点开后可高亮并逐条跳转正文匹配项。
+  两个浮层互斥：打开一个会自动收起另一个。查找逻辑见 `static/js/article-search.js`。
 - 后台「写新文章 / 编辑文章」的**文集**输入框支持 `datalist` 补全已有文集名。
 
 #### 发布时刻（`time`）
@@ -273,6 +277,7 @@ links:
 | 后台功能 | `admin.py` | 蓝图前缀 `/admin`，新增表单参考 `article_form.html` |
 | Markdown 能力（目录深度、提示块…） | `content.py` 的 `_markdown()` | 调整扩展列表与 `extension_configs` |
 | 文章页的悬浮目录 | `static/js/toc.js`、`static/css/site.css` 的 `.toc-fab` | 两个页签的内容分别在 `article_detail.html` 里；拖动与位置记忆见 `toc.js` |
+| 文章页的在文中查找 | `static/js/article-search.js`、`static/css/site.css` 的 `.article-find-fab` | 与悬浮目录同一个浮层（`data-article-find-fab`），互斥靠 `article-fab-open` 事件 |
 
 ### 换个配色（30 秒）
 

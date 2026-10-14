@@ -95,7 +95,7 @@
       if (!data || typeof data.x !== 'number' || typeof data.y !== 'number') {
         return null;
       }
-      data.y -= fab.querySelector('.article-find-fab').offsetHeight + 12;
+      data.y -= fab.querySelector('[data-article-find-fab]').offsetHeight + 12;
       localStorage.setItem(POS_KEY, JSON.stringify(data));
       return data;
     } catch (error) {
@@ -171,19 +171,25 @@
   /* ------------------------------------------------ 面板开合 */
 
   function setOpen(open) {
+    if (open) {
+      // 通知搜索浮层让位；两个浮层靠这个事件保持互斥，不再互相直查
+      document.dispatchEvent(new CustomEvent('article-fab-open', { detail: fab }));
+    }
     panel.hidden = !open;
     fab.classList.toggle('is-open', open);
     toggle.setAttribute('aria-expanded', String(open));
     toggle.setAttribute('aria-label', open ? '关闭目录' : '打开目录');
-    if (open && findPanel && !findPanel.hidden) {
-      findPanel.hidden = true;
-      findButton.setAttribute('aria-expanded', 'false');
-    }
     updateFlip(); // 展开后有了真实高度，朝向要按它重算一次
     if (open) {
       highlightCurrent();
     }
   }
+
+  document.addEventListener('article-fab-open', function (event) {
+    if (event.detail !== fab && !panel.hidden) {
+      setOpen(false);
+    }
+  });
 
   toggle.addEventListener('click', function () {
     if (swallowClick) {
@@ -211,32 +217,6 @@
 
   var tabs = Array.prototype.slice.call(panel.querySelectorAll('[data-toc-tab]'));
   var panes = Array.prototype.slice.call(panel.querySelectorAll('[data-toc-pane]'));
-  var findPanel = fab.querySelector('[data-article-find]');
-  var findFab = fab.querySelector('.article-find-fab');
-  var findButton = fab.querySelector('[data-article-find-toggle]');
-
-  function updateFindFlip() {
-    if (!findPanel || findPanel.hidden || !findFab) {
-      return;
-    }
-    var rect = findFab.getBoundingClientRect();
-    var width = findPanel.offsetWidth;
-    var height = findPanel.offsetHeight;
-    var fitsRight = rect.right + width <= window.innerWidth - EDGE;
-    var fitsLeft = rect.left - width >= EDGE;
-    findFab.classList.toggle('is-right', !fitsRight && fitsLeft);
-
-    var fitsAbove = rect.top - height - GAP >= EDGE;
-    var fitsBelow = rect.bottom + height + GAP <= window.innerHeight - EDGE;
-    findFab.classList.toggle('is-below', !fitsAbove && fitsBelow);
-  }
-
-  if (findPanel && findButton) {
-    findButton.addEventListener('click', function () {
-      window.requestAnimationFrame(updateFindFlip);
-    });
-    window.addEventListener('resize', updateFindFlip);
-  }
 
   function selectTab(name) {
     tabs.forEach(function (tab) {

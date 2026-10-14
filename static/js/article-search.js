@@ -1,11 +1,15 @@
 (function () {
   'use strict';
 
+  var fab = document.querySelector('[data-article-find-fab]');
   var panel = document.querySelector('[data-article-find]');
   var prose = document.querySelector('.post .prose');
-  if (!panel || !prose) {
+  if (!fab || !panel || !prose) {
     return;
   }
+
+  var EDGE = 8;  // 离视口边缘至少留出的空隙（与 toc.js 一致）
+  var GAP = 10;  // 面板与按钮之间的距离（与 CSS 保持一致）
 
   var input = panel.querySelector('[data-article-find-query]');
   var status = panel.querySelector('[data-article-find-status]');
@@ -95,21 +99,55 @@
     status.textContent = (current + 1) + ' / ' + matches.length;
   }
 
-  function setOpen(open) {
+  /* 面板往哪边开：默认挂在按钮上方、右边缘对齐；按钮贴近视口上/左边缘时翻到
+     下方 / 向右展开。与目录面板同一套 is-below / is-right 约定（见 site.css）。 */
+  function updateFlip() {
+    if (panel.hidden) {
+      return;
+    }
+    var rect = fab.getBoundingClientRect();
+    var width = panel.offsetWidth;
+    var height = panel.offsetHeight;
+
+    var fitsLeft = rect.right - width >= EDGE;
+    var fitsRight = rect.left + width <= window.innerWidth - EDGE;
+    fab.classList.toggle('is-right', !fitsLeft && fitsRight);
+
+    var fitsAbove = rect.top - height - GAP >= EDGE;
+    var fitsBelow = rect.bottom + height + GAP <= window.innerHeight - EDGE;
+    fab.classList.toggle('is-below', !fitsAbove && fitsBelow);
+  }
+
+  /* 只改开合状态，不动焦点：供别的浮层抢开时静默收起自己。 */
+  function applyOpen(open) {
     panel.hidden = !open;
     toggle.setAttribute('aria-expanded', String(open));
     if (open) {
-      var tocPanel = document.querySelector('[data-toc-panel]');
-      var tocToggle = document.querySelector('[data-toc-toggle]');
-      if (tocPanel && !tocPanel.hidden && tocToggle) {
-        tocToggle.click();
-      }
+      updateFlip();
+    }
+  }
+
+  function setOpen(open) {
+    if (open) {
+      // 通知目录浮层让位；两个浮层靠这个事件保持互斥，不再互相直查
+      document.dispatchEvent(new CustomEvent('article-fab-open', { detail: fab }));
+    }
+    applyOpen(open);
+    if (open) {
       input.focus();
       input.select();
     } else {
       toggle.focus();
     }
   }
+
+  document.addEventListener('article-fab-open', function (event) {
+    if (event.detail !== fab && !panel.hidden) {
+      applyOpen(false);
+    }
+  });
+
+  window.addEventListener('resize', updateFlip);
 
   toggle.addEventListener('click', function () {
     setOpen(panel.hidden);
@@ -136,7 +174,7 @@
   });
 
   document.addEventListener('pointerdown', function (event) {
-    if (!panel.hidden && !panel.parentNode.contains(event.target)) {
+    if (!panel.hidden && !fab.contains(event.target)) {
       setOpen(false);
     }
   });
