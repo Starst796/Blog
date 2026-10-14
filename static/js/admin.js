@@ -94,8 +94,13 @@
     }
 
     var start = findMatches[currentFindMatch];
+    var line = textarea.value.slice(0, start).split('\n').length - 1;
     textarea.focus();
     textarea.setSelectionRange(start, start + findInput.value.length);
+    refreshLineTops();
+    if (lineTops.length) {
+      textarea.scrollTop = Math.max(0, lineTops[Math.min(line, lineTops.length - 1)] - 24);
+    }
     refreshFindMatches(false);
   }
 

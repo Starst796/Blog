@@ -682,15 +682,56 @@ body:has(.preview-bar) .site-header {
   margin: 0 0 24px;
 }
 
+.article-find-fab {
+  position: relative;
+}
+
+.article-find-button {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.article-find-button svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.article-find-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  z-index: 1;
+  width: min(360px, calc(100vw - 32px));
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-solid);
+  box-shadow: var(--shadow);
+}
+
+.article-find-panel[hidden] {
+  display: none;
+}
+
+.article-find-fab.is-below .article-find-panel {
+  top: calc(100% + 10px);
+  bottom: auto;
+}
+
+.article-find-fab.is-right .article-find-panel {
+  right: auto;
+  left: 0;
+}
+
 .article-search .input,
-.article-find .input,
+.article-find-panel .input,
 .editor-find .input {
   flex: 1 1 220px;
   min-width: 0;
-}
-
-.article-find {
-  margin-top: 20px;
 }
 
 .article-find-status,
@@ -1338,9 +1379,10 @@ body:has(.preview-bar) .site-header {
   font-size: 0.94rem;
 }
 
-/* ------------------------------------------------ 悬浮目录（可拖动）
+/* -------------------------------------------- 阅读页悬浮导航（可拖动）
 
-   按钮固定悬浮在右下角，按住可以拖到任意位置，松手后位置记进 localStorage。
+   查找与目录按钮固定悬浮在右下角，按住目录按钮可以拖到任意位置，
+   松手后位置记进 localStorage。
    拖动用指针事件实现，所以按钮上要 touch-action: none——否则手指落在按钮上
    会被浏览器当成滚动，拖不动。
    面板是按钮的绝对定位子元素，跟着按钮一起移动；开合方向由 JS 打的
@@ -1348,6 +1390,10 @@ body:has(.preview-bar) .site-header {
 
 .toc-fab {
   position: fixed;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
   right: 24px;
   bottom: 28px;
   z-index: 40;
@@ -2571,6 +2617,10 @@ input[type="checkbox"] {
   .toc-fab-button {
     width: 42px;
     height: 42px;
+  }
+
+  .article-find-panel {
+    width: min(340px, calc(100vw - 28px));
   }
 }
 
