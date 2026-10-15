@@ -28,15 +28,26 @@
 <body>
   <a class="skip-link" href="#main">跳到主要内容</a>
 
-  {% if preview_mode and not request.path.startswith('/admin') %}
+  {% if preview_scope != 'none' and not request.path.startswith('/admin') %}
     <div class="preview-bar" role="status">
       <span class="preview-dot" aria-hidden="true"></span>
       <strong>预览模式</strong>
-      <span class="preview-text">正在显示草稿与敏感内容，其他访客看不到</span>
-      {% if session_csrf %}
+      <span class="preview-text">
+        {%- if preview_scope == 'all' -%}
+          正在以管理员模式预览显示草稿与敏感内容。
+        {%- else -%}
+          正在以访客模式显示草稿。
+        {%- endif -%}
+      </span>
+      {% if preview_scope == 'all' and session_csrf %}
         <form class="inline-form" method="post"
               action="{{ url_for('admin.toggle_preview_mode') }}">
           <input type="hidden" name="csrf_token" value="{{ session_csrf }}">
+          <button class="preview-exit" type="submit">退出预览</button>
+        </form>
+      {% elif preview_scope == 'draft' %}
+        <form class="inline-form" method="post"
+              action="{{ url_for('preview.exit_preview') }}">
           <button class="preview-exit" type="submit">退出预览</button>
         </form>
       {% endif %}

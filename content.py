@@ -553,9 +553,30 @@ def get_site() -> dict[str, Any]:
     return _store()["site"]
 
 
+def _visible(article: Article, include_drafts: bool, include_sensitive: bool) -> bool:
+    """单篇文章是否可见。
+
+    draft 是「暂时不发布」，sensitive 是「任何情况下都不对外输出」：后者用于存放
+    含密钥一类内容，即使有人误把 draft 改成 false 也不会泄露，因此两者分开判断。
+    """
+    if article.sensitive:
+        return include_sensitive
+    return include_drafts or not article.draft
+
+
+def _resolve_sensitive(include_drafts: bool, include_sensitive: bool | None) -> bool:
+    """``include_sensitive`` 缺省时跟随 ``include_drafts``。
+
+    这样既保留了「``include_drafts=True`` 即草稿与敏感内容全部可见」的既有语义
+    （后台调用无需改动），又允许显式传入 ``False`` 只放行草稿——访客预览即用这一档。
+    """
+    return include_drafts if include_sensitive is None else include_sensitive
+
+
 def list_articles(
     *,
     include_drafts: bool = False,
+    include_sensitive: bool | None = None,
     tag: str | None = None,
     collection: str | None = None,
     query: str | None = None,
@@ -566,11 +587,12 @@ def list_articles(
 
     同一时刻的两篇再按 slug 倒序，顺序稳定且可复现。
     """
-    articles = list(_store()["articles"].values())
-    if not include_drafts:
-        # draft 是「暂时不发布」，sensitive 是「任何情况下都不对外输出」：
-        # 后者用于存放含密钥一类内容，即使有人误把 draft 改成 false 也不会泄露。
-        articles = [item for item in articles if not item.draft and not item.sensitive]
+    include_sensitive = _resolve_sensitive(include_drafts, include_sensitive)
+    articles = [
+        item
+        for item in _store()["articles"].values()
+        if _visible(item, include_drafts, include_sensitive)
+    ]
     if collection:
         wanted = collection.strip().lower()
         articles = [item for item in articles if item.collection.lower() == wanted]
@@ -599,33 +621,49 @@ def list_articles(
 def count_articles(
     *,
     include_drafts: bool = False,
+    include_sensitive: bool | None = None,
     tag: str | None = None,
     collection: str | None = None,
     query: str | None = None,
 ) -> int:
     return len(
         list_articles(
-            include_drafts=include_drafts, tag=tag, collection=collection, query=query
+            include_drafts=include_drafts,
+            include_sensitive=include_sensitive,
+            tag=tag,
+            collection=collection,
+            query=query,
         )
     )
 
 
-def get_article(slug: str, *, include_drafts: bool = False) -> Article | None:
+def get_article(
+    slug: str,
+    *,
+    include_drafts: bool = False,
+    include_sensitive: bool | None = None,
+) -> Article | None:
     if not slug or not SLUG_RE.match(slug):
         return None
     article = _store()["articles"].get(slug)
     if article is None:
         return None
-    if (article.draft or article.sensitive) and not include_drafts:
+    if not _visible(article, include_drafts, _resolve_sensitive(include_drafts, include_sensitive)):
         return None
     return article
 
 
-def list_tags(*, include_drafts: bool = False, collection: str | None = None) -> list[tuple[str, int]]:
+def list_tags(
+    *,
+    include_drafts: bool = False,
+    include_sensitive: bool | None = None,
+    collection: str | None = None,
+) -> list[tuple[str, int]]:
     """返回 ``[(标签, 篇数)]``，按篇数倒序。可限定在某个文集内统计。"""
+    show_sensitive = _resolve_sensitive(include_drafts, include_sensitive)
     counter: dict[str, int] = {}
     for article in _store()["articles"].values():
-        if (article.draft or article.sensitive) and not include_drafts:
+        if not _visible(article, include_drafts, show_sensitive):
             continue
         if collection and article.collection.lower() != collection.strip().lower():
             continue
@@ -634,11 +672,14 @@ def list_tags(*, include_drafts: bool = False, collection: str | None = None) ->
     return sorted(counter.items(), key=lambda pair: (-pair[1], pair[0]))
 
 
-def list_collections(*, include_drafts: bool = False) -> list[tuple[str, int]]:
+def list_collections(
+    *, include_drafts: bool = False, include_sensitive: bool | None = None
+) -> list[tuple[str, int]]:
     """返回 ``[(文集, 篇数)]``，按篇数倒序；「未归档」始终排在最后。"""
+    show_sensitive = _resolve_sensitive(include_drafts, include_sensitive)
     counter: dict[str, int] = {}
     for article in _store()["articles"].values():
-        if (article.draft or article.sensitive) and not include_drafts:
+        if not _visible(article, include_drafts, show_sensitive):
             continue
         counter[article.collection] = counter.get(article.collection, 0) + 1
     return sorted(
@@ -647,10 +688,14 @@ def list_collections(*, include_drafts: bool = False) -> list[tuple[str, int]]:
     )
 
 
-def list_articles_by_year(*, include_drafts: bool = False) -> list[tuple[int, list[Article]]]:
+def list_articles_by_year(
+    *, include_drafts: bool = False, include_sensitive: bool | None = None
+) -> list[tuple[int, list[Article]]]:
     """按年份分组，用于文章归档页。"""
     grouped: dict[int, list[Article]] = {}
-    for article in list_articles(include_drafts=include_drafts):
+    for article in list_articles(
+        include_drafts=include_drafts, include_sensitive=include_sensitive
+    ):
         grouped.setdefault(article.year, []).append(article)
     return sorted(grouped.items(), key=lambda pair: -pair[0])
 

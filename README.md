@@ -44,7 +44,8 @@ Flask 服务端渲染，内容用 Markdown + YAML front matter 管理，**没有
 | **草稿与敏感内容** | `draft: true` 表示「还没写完」，`sensitive: true` 表示「永不对外输出」，两者对外都是 404 |
 | **本地草稿兜底** | 编辑器在预览渲染完成后把字段与正文写进 `localStorage`，保存到服务器即清除；误关标签页、刷新也能捞回来 |
 | **文集与标签** | `collection: 名字` 把文章归入文集（留空即「未归档」），列表页按发布时间（日期 + 时刻）倒序平铺并标注文集与标签，详情页的「更早 / 更新」只在同一文集内跳转 |
-| **预览模式** | 登录后一键在**公开页面**上查看草稿，页面顶部有橙色横幅提示，并自动 `noindex` |
+| **预览模式** | 登录后一键在**公开页面**上查看草稿与敏感内容，页面顶部有橙色横幅提示，并自动 `noindex` |
+| **访客预览** | 在 `.env` 里设置 `PREVIEW_KEY`，把密钥告诉朋友后，对方访问 `/preview` 输入即可查看**草稿**（`sensitive` 内容始终不显示）；同样自动 `noindex` |
 | **SEO / 订阅开箱可用** | `sitemap.xml`、`atom.xml`、canonical 链接、`robots.txt` 全自动生成 |
 | **一个变量表换肤** | `static/css/site.css` 顶部的 `:root` 变量控制全部配色、圆角与阴影，内置明暗主题切换 |
 | **push 即部署** | 附带 `post-receive` 钩子、systemd 单元与 nginx 示例，一次 `git push` 完成上线 |
@@ -99,7 +100,8 @@ python wsgi.py                  # http://127.0.0.1:8080
 .
 ├── app.py                     应用工厂：日志、模板过滤器、错误处理、蓝图装配
 ├── views.py                   公开路由：主页 / 项目 / 文章 / 订阅源 / SEO
-├── admin.py                   管理后台：登录、CRUD、图片上传、预览模式
+├── admin.py                   管理后台：登录、CRUD、图片上传
+├── preview.py                 预览态：后台预览与访客预览的档位判断 + /preview 路由
 ├── content.py                 内容层：读 Markdown、渲染 HTML、进程内缓存
 ├── config.py                  全部可调参数（均可用环境变量覆盖）
 ├── manage.py                  运维脚本：init / set-password / status / init-content
@@ -219,19 +221,40 @@ links:
 | 标记 | 含义 | 谁会看到 |
 | --- | --- | --- |
 | 无标记 | 已发布 | 所有人 |
-| `draft: true` | 还没写完 | 仅你在预览模式下 |
-| `sensitive: true` | 写完了但不打算公开（如含凭据的运维手册） | 仅你在预览模式下 |
+| `draft: true` | 还没写完 | 预览模式：你（后台预览）与访客（凭 `PREVIEW_KEY`） |
+| `sensitive: true` | 写完了但不打算公开（如含凭据的运维手册） | 仅你在后台预览模式下 |
 
 两者对外表现一致，区别只在语义：`draft` 表示「以后可能发布」，
 `sensitive` 表示「永远不对外输出」。即使误把 `draft` 改成 `false`，
 `sensitive` 的内容也不会泄露——`content.py` 中对它是硬过滤，
 而且 `sitemap.xml`、`atom.xml` **无论何时**都只输出已发布内容。
 
+预览有两种，互不影响，也都不改变其他访客看到的内容：
+
+| | 开启方式 | 能看到 |
+| --- | --- | --- |
+| **后台预览** | 登录 `/admin` 后点「预览草稿与敏感内容」 | 草稿 + `sensitive` 内容 |
+| **访客预览** | 访问 `/preview` 输入 `.env` 里的 `PREVIEW_KEY` | 只有草稿，`sensitive` 内容始终 404 |
+
 预览期间：
 
 - 页面顶部始终有一条橙色横幅，避免把预览效果误当成线上真实效果；
-- 响应带 `X-Robots-Tag: noindex, nofollow`，爬虫不会收录；
-- 开关只存在你自己的浏览器会话里，其他访客看到的仍是公开版本。
+- 响应带 `X-Robots-Tag: noindex, nofollow`，`robots.txt` 也排除了 `/preview`；
+- 开关只存在当前浏览器会话里，其他访客看到的仍是公开版本。
+
+**访客预览**适合把未定稿的文章发给朋友试读：
+
+```sh
+# .env：留空即关闭该功能
+PREVIEW_KEY=一段足够长的随机串        # python -c "import secrets; print(secrets.token_urlsafe(24))"
+PREVIEW_ATTEMPT_IP_LIMIT=8            # 窗口内密钥试错次数上限
+PREVIEW_ATTEMPT_IP_WINDOW=300         # 限流窗口（秒）
+```
+
+密钥用于校验的是常量时间比较（`hmac.compare_digest`），失败按来源 IP 限流，
+超限后连正确密钥也会被暂时拒绝。`manage.py init` 会在 `PREVIEW_KEY` 为空时自动
+生成一个并打印出来；`manage.py status` 可查看当前是否开启。该功能默认关闭，
+且 `/preview` 不对外露出任何入口，只有知道地址和密钥的人才进得来。
 
 ### 编辑器快捷键
 
@@ -332,6 +355,9 @@ links:
 | `FEED_LIMIT` | `20` | `atom.xml` 订阅源包含的最新文章条数 |
 | `LOGIN_ATTEMPT_IP_LIMIT` | `8` | 登录失败限流阈值（次） |
 | `LOGIN_ATTEMPT_IP_WINDOW` | `300` | 限流窗口（秒） |
+| `PREVIEW_KEY` | `` | 访客预览密钥；留空即关闭 `/preview`。`manage.py init` 可自动生成 |
+| `PREVIEW_ATTEMPT_IP_LIMIT` | `8` | 访客密钥试错限流阈值（次） |
+| `PREVIEW_ATTEMPT_IP_WINDOW` | `300` | 访客密钥限流窗口（秒） |
 | `SECRET_KEY` | 自动生成 | 由 `manage.py init` 写入，**不要手工填写，也不要提交** |
 | `ADMIN_USERNAME` | `admin` | 后台账号，由 `manage.py` 维护 |
 | `ADMIN_PASSWORD_HASH` | — | 由 `manage.py set-password` 写入，仅保存 werkzeug 哈希 |
@@ -479,6 +505,8 @@ sudo systemctl restart blog.service
 - 会话 cookie：`HttpOnly` + `Secure` + `SameSite=Lax`，仅存一个布尔标记。
 - 所有写操作校验一次性 CSRF token；登录失败按来源 IP 限流（默认 5 分钟 8 次）。
 - 登录跳转只接受以 `/admin` 开头的 `next`，防止开放重定向。
+- 访客预览密钥用 `hmac.compare_digest` 常量时间比较，并按来源 IP 限流试错；
+  预览态下 `sensitive` 内容依旧 404。
 - 图片上传按扩展名、MIME、Pillow 实际解码三重校验，并重命名后按年月分目录存放。
 - slug 正则白名单 + `send_from_directory`，双重防路径穿越。
 - `/admin` 全部响应带 `X-Robots-Tag: noindex`，且已被 `robots.txt` 排除。

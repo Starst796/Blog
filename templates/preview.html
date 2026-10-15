@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}访客预览 · {{ site.name }}{% endblock %}
+{% block description %}输入密钥后查看未发布的草稿{% endblock %}
+{% block meta %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+
+{% block content %}
+  <div class="container narrow">
+    <div class="card auth-card">
+      <h1 class="auth-title">访客预览</h1>
+      <p class="auth-sub">输入密钥后可查看未发布的草稿。</p>
+
+      {% if not configured %}
+        <p class="flash flash-error">本站未开启访客预览功能。</p>
+      {% elif error %}
+        <p class="flash flash-error">{{ error }}</p>
+      {% endif %}
+
+      {% if unlocked %}
+        <p class="flash flash-ok">预览已开启，公开页面会一并显示草稿。</p>
+        <div class="preview-actions">
+          <a class="button button-primary button-block" href="{{ url_for('articles') }}">去看草稿</a>
+          <form method="post" action="{{ url_for('preview.exit_preview') }}">
+            <button class="button button-ghost button-block" type="submit">退出预览</button>
+          </form>
+        </div>
+      {% else %}
+        <form method="post" autocomplete="off">
+          <label class="field">
+            <span class="field-label">预览密钥</span>
+            <input class="input" type="password" name="key" autocomplete="off"
+                   {% if configured %}required autofocus{% else %}disabled{% endif %}>
+          </label>
+          <button class="button button-primary button-block" type="submit"
+                  {% if not configured %}disabled{% endif %}>进入预览</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

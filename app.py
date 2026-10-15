@@ -110,7 +110,7 @@ def _register_filters(app: Flask) -> None:
 def _register_context(app: Flask) -> None:
     @app.context_processor
     def inject_globals() -> dict:
-        from admin import preview_enabled
+        from preview import preview_enabled, preview_scope
 
         return {
             "site": content.get_site(),
@@ -121,6 +121,8 @@ def _register_context(app: Flask) -> None:
             "current_year": datetime.now().year,
             "asset_version": ASSET_VERSION,
             "preview_mode": preview_enabled(),
+            # none / draft（访客，只显示草稿）/ all（后台，含敏感内容）
+            "preview_scope": preview_scope(),
             # 公开页面上的「退出预览」表单需要 CSRF token；只有已登录时它才存在
             "session_csrf": session.get("csrf", ""),
         }
@@ -145,7 +147,7 @@ def _register_preview_guard(app: Flask) -> None:
 
     @app.after_request
     def _preview_noindex(response):
-        from admin import preview_enabled
+        from preview import preview_enabled
 
         if preview_enabled():
             response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
@@ -171,11 +173,13 @@ def _register_error_handlers(app: Flask) -> None:
 
 
 def _register_routes(app: Flask) -> None:
-    """公开路由直接挂在应用上（端点名无前缀），后台挂在 /admin 前缀的蓝图上。"""
+    """公开路由直接挂在应用上（端点名无前缀），后台与访客预览挂在各自蓝图上。"""
     import views
 
     views.register(app)
 
     from admin import bp as admin_bp
+    from preview import bp as preview_bp
 
     app.register_blueprint(admin_bp)
+    app.register_blueprint(preview_bp)

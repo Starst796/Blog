@@ -85,3 +85,11 @@ class Config:
     # ---------- 登录限流 ----------
     LOGIN_ATTEMPT_IP_LIMIT = int(os.environ.get("LOGIN_ATTEMPT_IP_LIMIT", "8"))
     LOGIN_ATTEMPT_IP_WINDOW = int(os.environ.get("LOGIN_ATTEMPT_IP_WINDOW", "300"))
+
+    # ---------- 访客预览 ----------
+    # 留空即关闭该功能。设置后，任何访客在 /preview 输入该密钥，
+    # 就能在公开页面上看到草稿（``sensitive`` 内容始终不显示）。
+    PREVIEW_KEY = os.environ.get("PREVIEW_KEY", "")
+    # 访客密钥的尝试限流：与后台登录分开计数，避免共用窗口互相影响
+    PREVIEW_ATTEMPT_IP_LIMIT = int(os.environ.get("PREVIEW_ATTEMPT_IP_LIMIT", "8"))
+    PREVIEW_ATTEMPT_IP_WINDOW = int(os.environ.get("PREVIEW_ATTEMPT_IP_WINDOW", "300"))

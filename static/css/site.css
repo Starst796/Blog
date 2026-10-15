@@ -1958,6 +1958,18 @@ body:has(.preview-bar) .site-header {
   box-shadow: var(--shadow);
 }
 
+/* 访客预览页：卡片里的按钮纵向排列 */
+
+.preview-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.preview-actions form {
+  margin: 0;
+}
+
 .auth-title {
   margin: 0;
   font-size: 1.35rem;

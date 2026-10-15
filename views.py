@@ -18,7 +18,7 @@ from flask import (
 )
 
 import content
-from admin import preview_enabled
+from preview import visibility
 
 
 class _Registrar:
@@ -61,13 +61,17 @@ def _homepage_projects(limit: int) -> list[content.Project]:
 @bp.get("/")
 def index():
     limit = current_app.config["HOMEPAGE_LIMIT"]
-    preview = preview_enabled()
+    include_drafts, include_sensitive = visibility()
     return render_template(
         "index.html",
         projects=_homepage_projects(limit),
         project_total=len(content.list_projects()),
-        articles=content.list_articles(include_drafts=preview, limit=limit),
-        article_total=content.count_articles(include_drafts=preview),
+        articles=content.list_articles(
+            include_drafts=include_drafts, include_sensitive=include_sensitive, limit=limit
+        ),
+        article_total=content.count_articles(
+            include_drafts=include_drafts, include_sensitive=include_sensitive
+        ),
     )
 
 
@@ -97,15 +101,20 @@ def articles():
     tag = (request.args.get("tag") or "").strip() or None
     collection = (request.args.get("collection") or "").strip() or None
     query = (request.args.get("q") or "").strip() or None
-    preview = preview_enabled()
+    include_drafts, include_sensitive = visibility()
     total = content.count_articles(
-        include_drafts=preview, tag=tag, collection=collection, query=query
+        include_drafts=include_drafts,
+        include_sensitive=include_sensitive,
+        tag=tag,
+        collection=collection,
+        query=query,
     )
     total_pages = max(1, math.ceil(total / per_page))
     page = min(max(request.args.get("page", type=int) or 1, 1), total_pages)
 
     items = content.list_articles(
-        include_drafts=preview,
+        include_drafts=include_drafts,
+        include_sensitive=include_sensitive,
         tag=tag,
         collection=collection,
         query=query,
@@ -116,8 +125,14 @@ def articles():
     return render_template(
         "articles.html",
         articles=items,
-        collections=content.list_collections(include_drafts=preview),
-        tags=content.list_tags(include_drafts=preview, collection=collection),
+        collections=content.list_collections(
+            include_drafts=include_drafts, include_sensitive=include_sensitive
+        ),
+        tags=content.list_tags(
+            include_drafts=include_drafts,
+            include_sensitive=include_sensitive,
+            collection=collection,
+        ),
         active_collection=collection,
         active_tag=tag,
         query=query,
@@ -129,15 +144,21 @@ def articles():
 
 @bp.get("/articles/<slug>")
 def article_detail(slug: str):
-    preview = preview_enabled()
-    article = content.get_article(slug, include_drafts=preview)
+    include_drafts, include_sensitive = visibility()
+    article = content.get_article(
+        slug, include_drafts=include_drafts, include_sensitive=include_sensitive
+    )
     if article is None:
         abort(404)
 
     # 相邻文章只在同一文集内寻找：跨文集的文章互不串联，
     # 阅读体验上等同于「把这篇文集从头读到尾」。
     # 列表按日期倒序，因此 index-1 更新、index+1 更早。
-    siblings = content.list_articles(include_drafts=preview, collection=article.collection)
+    siblings = content.list_articles(
+        include_drafts=include_drafts,
+        include_sensitive=include_sensitive,
+        collection=article.collection,
+    )
     slugs = [item.slug for item in siblings]
     position = slugs.index(slug) if slug in slugs else None
 
@@ -178,6 +199,7 @@ def robots():
         "User-agent: *",
         "Allow: /",
         "Disallow: /admin",
+        "Disallow: /preview",
         f"Sitemap: {current_app.config['SITE_URL']}/sitemap.xml",
     ]
     return Response("\n".join(lines) + "\n", mimetype="text/plain")

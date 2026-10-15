@@ -40,6 +40,7 @@ from werkzeug.security import check_password_hash
 from werkzeug.utils import secure_filename
 
 import content
+from preview import ADMIN_SESSION_KEY, admin_preview_enabled
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -82,14 +83,9 @@ def _client_ip() -> str:
 
 # --------------------------------------------------------------------- 预览模式
 
-# 开关只存在浏览器会话里，因此只影响你自己看到的内容，
-# 不会改变任何其他访客（包括搜索引擎）看到的结果。
-PREVIEW_SESSION_KEY = "preview"
-
-
-def preview_enabled() -> bool:
-    """当前请求是否处于预览模式。必须已登录，否则恒为 False。"""
-    return bool(session.get("authenticated") and session.get(PREVIEW_SESSION_KEY))
+# 预览档位的判断集中在 preview.py（后台与访客共用），这里只保留会话键别名。
+# 后台预览与访客预览互不影响：前者能看到敏感内容，后者只能看到草稿。
+PREVIEW_SESSION_KEY = ADMIN_SESSION_KEY
 
 
 def _safe_redirect_target() -> str:
@@ -157,7 +153,7 @@ def _inject_admin_globals():
         "csrf_token": csrf_token,
         "admin_username": current_app.config["ADMIN_USERNAME"],
         "password_configured": bool(current_app.config["ADMIN_PASSWORD_HASH"]),
-        "preview_mode": preview_enabled(),
+        "preview_mode": admin_preview_enabled(),
         # 供文章表单的「文集」输入框做候选项，方便复用已有文集名
         "collection_options": [name for name, _ in content.list_collections(include_drafts=True)],
     }

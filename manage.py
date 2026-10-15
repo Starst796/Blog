@@ -108,6 +108,14 @@ def cmd_init(args: argparse.Namespace) -> int:
     else:
         print(f"· 管理账号已存在：{values['ADMIN_USERNAME']}")
 
+    if not values.get("PREVIEW_KEY"):
+        preview_key = secrets.token_urlsafe(24)
+        updates["PREVIEW_KEY"] = preview_key
+        print(f"✓ 已生成访客预览密钥：{preview_key}")
+        print("  访客访问 /preview 输入该密钥即可查看草稿；不需要时清空 .env 中的 PREVIEW_KEY 即关闭")
+    else:
+        print("· 访客预览密钥已存在，保持不变")
+
     if updates:
         update_env(updates)
 
@@ -191,6 +199,10 @@ def cmd_status(args: argparse.Namespace) -> int:
     print(f"SECRET_KEY          : {'已设置' if values.get('SECRET_KEY') else '缺失'}")
     print(f"ADMIN_USERNAME      : {values.get('ADMIN_USERNAME') or '（默认 admin）'}")
     print(f"ADMIN_PASSWORD_HASH : {'已设置' if values.get('ADMIN_PASSWORD_HASH') else '缺失'}")
+    print(
+        "访客预览            : "
+        + ("已开启（密钥已设置）" if values.get("PREVIEW_KEY") else "关闭（未设置 PREVIEW_KEY）")
+    )
     print(f"内容目录            : {_default_content_dir()}")
     return 0
 
