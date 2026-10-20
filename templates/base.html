@@ -13,6 +13,7 @@
   <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
   <link rel="alternate" type="application/atom+xml" title="{{ site.name }}" href="{{ site_url }}/atom.xml">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css', v=asset_version) }}">
+  {% block head %}{% endblock %}
 
   <script>
     /* 在首次绘制前确定主题，避免明暗切换时的白屏闪烁 */

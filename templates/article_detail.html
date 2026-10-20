@@ -13,6 +13,12 @@
   {% if article.cover %}<meta property="og:image" content="{{ site_url }}{{ article.cover }}">{% endif %}
 {% endblock %}
 
+{% block head %}
+  {% if article.has_math %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='js/vendor/katex/katex.min.css', v=asset_version) }}">
+  {% endif %}
+{% endblock %}
+
 {% block content %}
   <div class="container page">
     <article class="post">
@@ -67,7 +73,7 @@
         </details>
       {% endif %}
 
-      <div class="prose">
+      <div class="prose" data-math-page>
         {{ article.html | safe }}
       </div>
     </article>
@@ -176,6 +182,11 @@
 {% endblock %}
 
 {% block scripts %}
+  {% if article.has_math %}
+    <script src="{{ url_for('static', filename='js/vendor/katex/katex.min.js', v=asset_version) }}" defer></script>
+    <script src="{{ url_for('static', filename='js/vendor/katex/auto-render.min.js', v=asset_version) }}" defer></script>
+    <script src="{{ url_for('static', filename='js/math.js', v=asset_version) }}" defer></script>
+  {% endif %}
   <script src="{{ url_for('static', filename='js/article-search.js', v=asset_version) }}" defer></script>
   <script src="{{ url_for('static', filename='js/toc.js', v=asset_version) }}" defer></script>
 {% endblock %}

@@ -2,6 +2,11 @@
 
 {% block title %}{{ '编辑文章' if article else '写新文章' }} · {{ site.name }}{% endblock %}
 
+{# 预览里的公式由 KaTeX 排版，样式与线上文章共用同一份本地文件 #}
+{% block head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='js/vendor/katex/katex.min.css', v=asset_version) }}">
+{% endblock %}
+
 {# 预览在浏览器本地渲染，需要编辑器专用的那几个脚本 #}
 {% block editor_scripts %}{% include "admin/_editor_scripts.html" %}{% endblock %}
 

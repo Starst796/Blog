@@ -69,6 +69,15 @@
 
       <span class="tool-separator" aria-hidden="true"></span>
 
+      {# 公式：行内用 $…$，块级用 $$ … $$ 独占一段。两种写法都由服务端的
+         pymdownx.arithmatex 保留成 KaTeX 分隔符，预览里当场排版。 #}
+      <button class="tool" type="button" data-tool="math-inline"
+              title="行内公式（$…$，与文字同一行）" aria-label="行内公式">∑</button>
+      <button class="tool" type="button" data-tool="math-block"
+              title="块级公式（$$ … $$，独占一段）" aria-label="块级公式">∫</button>
+
+      <span class="tool-separator" aria-hidden="true"></span>
+
       <button class="tool" type="button" data-tool="import-md"
               title="导入 Markdown 文件（会替换当前正文）" aria-label="导入 Markdown">↑</button>
       <button class="tool" type="button" data-tool="export-md"

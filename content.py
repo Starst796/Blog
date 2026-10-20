@@ -106,8 +106,13 @@ def _markdown() -> md.Markdown:
                 # 删除线：`extra` 并不包含 GFM 的 ~~文字~~，少了它工具栏的删除线按钮
                 # 只会插入一对原样输出的波浪号。
                 "pymdownx.tilde",
+                # 公式：原样保留 TeX，转成 KaTeX 认得的 \(…\) / \[…\] 分隔符。
+                # 排版在浏览器里完成（static/js/math.js），这样后台预览与线上
+                # 文章用的是同一套渲染，预览所见即所得。
+                "pymdownx.arithmatex",
             ],
             extension_configs={
+                "pymdownx.arithmatex": {"generic": True},
                 "codehilite": {
                     "css_class": "highlight",
                     "guess_lang": False,
@@ -320,6 +325,11 @@ class Article:
         """
         return "<a " in self.toc
 
+    @property
+    def has_math(self) -> bool:
+        """正文里有没有公式。模板据此决定要不要加载 KaTeX，没公式的文章不付这份流量。"""
+        return 'class="arithmatex"' in self.html
+
 
 @dataclass(slots=True)
 class Project:
@@ -348,6 +358,11 @@ class Project:
     def links_text(self) -> str:
         """供编辑表单回填：每行一条「名称 URL」。"""
         return "\n".join(f"{item['label']} {item['url']}" for item in self.links)
+
+    @property
+    def has_math(self) -> bool:
+        """正文里有没有公式。模板据此决定要不要加载 KaTeX，没公式的页面不付这份流量。"""
+        return 'class="arithmatex"' in self.html
 
 
 DEFAULT_SITE: dict[str, Any] = {

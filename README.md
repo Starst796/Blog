@@ -40,6 +40,7 @@ Flask 服务端渲染，内容用 Markdown + YAML front matter 管理，**没有
 | --- | --- |
 | **无数据库** | 内容就是 `.md` / `.yml` 文件。备份 = 复制目录，迁移 = 拷到新机器，回滚 = `git checkout` |
 | **可视化后台** | 登录 `/admin` 即可增删改文章、项目与站点信息，支持 Markdown 实时预览（在浏览器本地渲染，编辑过程不发请求）与图片上传 |
+| **LaTeX 公式** | 正文支持 `$…$` / `$$…$$`（也认 `\(…\)` / `\[…\]`），工具栏有行内与块级公式按钮；KaTeX 随仓库提交、本地渲染，后台预览与线上文章同一套排版 |
 | **文章搜索** | 文章列表可搜索标题、摘要与正文；阅读页和后台 Markdown 编辑器支持在当前文章中查找 |
 | **草稿与敏感内容** | `draft: true` 表示「还没写完」，`sensitive: true` 表示「永不对外输出」，两者对外都是 404 |
 | **本地草稿兜底** | 编辑器在预览渲染完成后把字段与正文写进 `localStorage`，保存到服务器即清除；误关标签页、刷新也能捞回来 |
@@ -58,7 +59,7 @@ Flask 服务端渲染，内容用 Markdown + YAML front matter 管理，**没有
 | --- | --- | --- |
 | Web | Flask + Jinja2 | 服务端渲染，SEO 友好，无构建步骤 |
 | 内容 | Markdown + YAML front matter | 可 diff、可迁移、备份即 `clone` |
-| 渲染 | Python-Markdown + Pygments | 目录、代码高亮、表格、提示块、脚注 |
+| 渲染 | Python-Markdown + Pygments + KaTeX | 目录、代码高亮、表格、提示块、脚注、数学公式 |
 | 图像 | Pillow | 上传时真实解码校验，而非只看扩展名 |
 | 进程 | gunicorn（1 worker / 4 threads） + systemd | 内容层用进程内缓存，单进程避免多 worker 缓存不一致 |
 | 反向代理 | nginx → `127.0.0.1:8080` | 应用只监听本机，不直接对公网暴露 |
@@ -118,7 +119,9 @@ python wsgi.py                  # http://127.0.0.1:8080
 │       ├── toc.js             文章页悬浮目录：可拖动，本篇 / 文集两个页签
 │       ├── admin.js           后台交互：编辑器与工具栏、草稿缓存、上传
 │       ├── markdown-local.js  后台预览的本地 Markdown 渲染（含已知差异说明）
+│       ├── math.js            公式排版：把 arithmatex 分隔符交给 KaTeX（公开页与预览共用）
 │       └── vendor/            预览用的第三方库，随仓库提交（见其中 README）
+│           └── katex/         KaTeX（含 woff2 字体），只给有公式的页面加载
 ├── deploy/
 │   ├── install.sh             一键渲染并安装 systemd 单元、sudoers、部署钩子
 │   ├── blog.service.template  systemd 单元模板
@@ -212,6 +215,7 @@ links:
 - **内容**：文章与项目的新建 / 编辑 / 删除，含 slug 重命名（旧文件自动清理）；
   内容列表两张表各自分页（每页 10 篇文章 / 5 个项目），删除后停在本页不会跳回第 1 页
 - **写文章 / 新建项目**：Markdown 实时预览、一键上传图片并插入链接。预览由浏览器本地渲染（`static/js/markdown-local.js`），整篇正文不出浏览器，出图速度只取决于本机；代价是预览与线上最终排版可能略有出入，写列表时记得在前面留一个空行——线上启用了 `sane_lists`，紧跟段落的 `1.` 不会变成列表
+- **公式工具**：工具栏的 **∑** 插入行内公式 `$…$`，**∫** 插入独占一段的块级公式 `$$ … $$`；选中文字再点会把文字包进公式，插入后占位内容保持选中，可直接改写。排版由 KaTeX 在浏览器里完成，后台预览与线上文章用的是同一份本地文件，写法见下文「[数学公式](#数学公式latex)」
 - **站点信息**：名称、标语、简介、所在地、邮箱、头像、社交链接
 - **预览草稿与敏感内容**：在公开页面上直接看到未发布内容
 - **本地草稿兜底**：编辑中的字段与正文存在浏览器里，保存到服务器后自动清除
@@ -255,6 +259,33 @@ PREVIEW_ATTEMPT_IP_WINDOW=300         # 限流窗口（秒）
 超限后连正确密钥也会被暂时拒绝。`manage.py init` 会在 `PREVIEW_KEY` 为空时自动
 生成一个并打印出来；`manage.py status` 可查看当前是否开启。该功能默认关闭，
 且 `/preview` 不对外露出任何入口，只有知道地址和密钥的人才进得来。
+
+### 数学公式（LaTeX）
+
+正文里的公式用 `$…$`（行内）或 `$$ … $$`（独占一段）书写，也兼容 `\(…\)` / `\[…\]`。
+工具栏的 **∑** / **∫** 两个按钮会插入对应写法；块级公式会自动在前后补空行，
+保证它独占一段（服务端只认整段都是公式的 `$$ … $$`）。
+
+```markdown
+质能方程 $E=mc^2$ 是行内公式。
+
+$$
+\int_0^1 x^2 \,\mathrm{d}x = \frac{1}{3}
+$$
+
+\[
+a^2 + b^2 = c^2
+\]
+```
+
+- **服务端只保留 TeX**：`content.py` 启用了 `pymdownx.arithmatex`（generic 模式），
+  把公式包成 `<span|div class="arithmatex">\(…\)</span>`，不在这里做排版。
+- **排版在浏览器里完成**：公开文章页与后台预览都调用 `static/js/math.js`，由本地
+  KaTeX（`static/js/vendor/katex/`）渲染，两处结果一致，也不向 CDN 发请求。
+- **只在有公式的页面加载**：文章 / 项目详情页按正文里有没有 `arithmatex` 决定是否
+  引入 KaTeX 的 JS 与 CSS，没有公式的页面不为它多付流量。
+- **不会误伤价格**：`$5 和 $10` 这种写法前后有空白，不会被当成公式；代码块与行内代码
+  里的 `$` 也原样显示。公式写错时预览显示红色原文，不会让整块预览报错。
 
 ### 编辑器快捷键
 
@@ -309,6 +340,7 @@ PREVIEW_ATTEMPT_IP_WINDOW=300         # 限流窗口（秒）
 | 路由与页面功能 | `views.py` | 用 `@bp.get("/path")` 添加新页面 |
 | 后台功能 | `admin.py` | 蓝图前缀 `/admin`，新增表单参考 `article_form.html` |
 | Markdown 能力（目录深度、提示块…） | `content.py` 的 `_markdown()` | 调整扩展列表与 `extension_configs` |
+| 公式（分隔符、KaTeX 样式） | `content.py` 的 `pymdownx.arithmatex` 配置、`static/js/math.js`、`static/js/vendor/katex/` | 换 KaTeX 版本时同步更新 `static/js/vendor/README.md` |
 | 文章页的悬浮目录 | `static/js/toc.js`、`static/css/site.css` 的 `.toc-fab` | 两个页签的内容分别在 `article_detail.html` 里；拖动与位置记忆见 `toc.js` |
 | 文章页的在文中查找 | `static/js/article-search.js`、`static/css/site.css` 的 `.article-find-fab` | 与悬浮目录同一个浮层（`data-article-find-fab`），互斥靠 `article-fab-open` 事件 |
 

@@ -3,6 +3,12 @@
 {% block title %}{{ project.title }} · 项目 · {{ site.name }}{% endblock %}
 {% block description %}{{ project.summary or project.title }}{% endblock %}
 
+{% block head %}
+  {% if project.has_math %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='js/vendor/katex/katex.min.css', v=asset_version) }}">
+  {% endif %}
+{% endblock %}
+
 {% block content %}
   <div class="container page">
     <article class="post">
@@ -31,9 +37,17 @@
         {% endif %}
       </header>
 
-      <div class="prose">
+      <div class="prose" data-math-page>
         {{ project.html | safe }}
       </div>
     </article>
   </div>
+{% endblock %}
+
+{% block scripts %}
+  {% if project.has_math %}
+    <script src="{{ url_for('static', filename='js/vendor/katex/katex.min.js', v=asset_version) }}" defer></script>
+    <script src="{{ url_for('static', filename='js/vendor/katex/auto-render.min.js', v=asset_version) }}" defer></script>
+    <script src="{{ url_for('static', filename='js/math.js', v=asset_version) }}" defer></script>
+  {% endif %}
 {% endblock %}

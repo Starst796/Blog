@@ -822,9 +822,11 @@
         });
       }
       preview.insertBefore(fragment, reference);
-      // 图片插进文档才会开始加载，量尺寸与挂回调放在这之后才有意义
+      // 图片插进文档才会开始加载，量尺寸与挂回调放在这之后才有意义；
+      // 公式也在这时排版，新块的内容只有此刻才在文档里
       fresh.forEach(function (block) {
         trackImages(block.nodes);
+        typesetMath(block.nodes);
       });
       index = stop;
     }
@@ -899,6 +901,23 @@
         img.addEventListener('load', settle, { once: true });
         img.addEventListener('error', settle, { once: true });
       });
+    });
+  }
+
+  /* ------------------------------------------------ 公式排版
+
+     KaTeX 只扫刚插进预览的节点：没改动的块被原样留着，里面已经排好版了，
+     整篇重扫会让长文每次按键都多花一遍排版时间。扫描范围是块本身及其子树，
+     与图片处理一样。模板没加载到 KaTeX 时静默跳过，预览里会显示原始 \(…\)。 */
+  function typesetMath(nodes) {
+    var math = window.BlogMath;
+    if (!math || !math.available) {
+      return;
+    }
+    nodes.forEach(function (node) {
+      if (node.nodeType === 1) {
+        math.render(node);
+      }
     });
   }
 
@@ -1414,8 +1433,10 @@
   }
 
   /* 块级插入物（分割线这类要独占一段的内容）：前后各留一个空行，
-     否则会粘到相邻段落上——紧跟在一行文字下面的 --- 会被当成二级标题。 */
-  function insertBlock(text) {
+     否则会粘到相邻段落上——紧跟在一行文字下面的 --- 会被当成二级标题。
+     selectFrom / selectTo 是相对插入文本的选区（用于插入后还能直接改写占位内容），
+     不传就把光标放到插入内容末尾。 */
+  function insertBlock(text, selectFrom, selectTo) {
     var start = textarea.selectionStart;
     var end = textarea.selectionEnd;
     var value = textarea.value;
@@ -1423,8 +1444,11 @@
     var tail = value.slice(end);
     var lead = head && !/\n$/.test(head) ? '\n\n' : (head && !/\n\n$/.test(head) ? '\n' : '');
     var follow = tail && !/^\n/.test(tail) ? '\n\n' : (tail && !/^\n\n/.test(tail) ? '\n' : '');
-    var caret = start + lead.length + text.length;
-    replaceRange(start, end, lead + text + follow, caret, caret);
+    if (selectFrom == null) {
+      selectFrom = selectTo = text.length;
+    }
+    replaceRange(start, end, lead + text + follow, start + lead.length + selectFrom,
+      start + lead.length + selectTo);
   }
 
   /* 链接：选中文字就当链接文字，插入后选中网址部分，可以直接粘贴覆盖。 */
@@ -1446,6 +1470,16 @@
     ordered: function () { toggleLinePrefix('', true); },
     unordered: function () { toggleLinePrefix('- '); },
     quote: function () { toggleLinePrefix('> '); },
+    'math-inline': function () { toggleInline('$', '$', 'E=mc^2'); },
+    'math-block': function () {
+      // 块级公式必须独占一段（前后留空行），否则服务端不会把它当成公式，
+      // 所以走 insertBlock 的留白逻辑；选中文字时把它包进公式并保持选中。
+      var start = textarea.selectionStart;
+      var end = textarea.selectionEnd;
+      var tex = textarea.value.slice(start, end) || 'E=mc^2';
+      // '$$\n' 占 3 个字符，TeX 从那里开始
+      insertBlock('$$\n' + tex + '\n$$', 3, 3 + tex.length);
+    },
     rule: function () { insertBlock('---'); },
     link: insertLink,
     image: function () { if (fileInput) { fileInput.click(); } },

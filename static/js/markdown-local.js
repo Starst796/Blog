@@ -12,6 +12,9 @@
      codehilite（Pygments）              highlight.js + 类名翻译成 Pygments 短码，
                                          复用 site.css 里已有的配色，不再写一份样式
      admonition（!!! note "标题"）       自定义块级规则，输出同样的 div/p 结构
+     arithmatex（$…$ / $$…$$ / \(…\)）   自定义块级与行内规则，输出同样的
+                                         <span|div class="arithmatex">\(…\)</span>，
+                                         排版交给 KaTeX（static/js/math.js）
      toc（标题锚点，保留中文）            自定义 core 规则，复刻 slugify_unicode
      pymdownx.tilde（~~删除~~）          markdown-it 的 <s> 改写为 <del>
      这里多出来的一样：每个顶层块带 data-line / data-line-end（源码行号），
@@ -161,6 +164,9 @@
       // 图片的 alt 是属性、不是文字，不参与锚点
       if (child.type === 'text' || child.type === 'code_inline') {
         text += child.content;
+      } else if (child.type === 'math_inline') {
+        // 服务端的标题文字是 \(…\)，slugify 之后剩下的正是 TeX 里的字母数字
+        text += child.content;
       } else if (child.children) {
         text += inlineText(child);
       }
@@ -272,6 +278,170 @@
     });
     md.renderer.rules.admonition_title = function (tokens, idx) {
       return '<p class="admonition-title">' + md.utils.escapeHtml(tokens[idx].content) + '</p>\n';
+    };
+  }
+
+  /* ------------------------------------------------ 公式（arithmatex）
+
+     Python-Markdown 的 pymdownx.arithmatex 在服务端只做一件事：认出 TeX 并原样
+     输出 <span|div class="arithmatex">\(…\)</span>，排版留给浏览器里的 KaTeX。
+     这里复刻同一件事，预览与线上才看到同样的结果。
+
+     规则按 arithmatex 的正则来：
+       - 行内：$…$（smart dollar：开符后、闭符前都不能是空白）、\(…\)
+       - 块级：$$…$$、\[…\]、\begin{env}…\end{env}，必须独占一整段（前后空行）
+     行内规则注册在 escape 之前，否则 \( 会先被反斜杠转义规则吃掉；
+     块级规则不进「段落终止链」，因为服务端也只认块首的公式。 */
+  var MATH_BLOCK_DOLLAR = /^\$\$((?:\\[\s\S]|[^\\])+?)\$\$[ \t]*$/;
+  var MATH_BLOCK_SQUARE = /^\\\[((?:\\[\s\S]|[^\\])+?)\\\][ \t]*$/;
+  var MATH_BLOCK_BEGIN = /^(\\begin\{([a-z]+\*?)\}(?:\\[\s\S]|[^\\])+?\\end\{\2\})[ \t]*$/;
+
+  function matchMathBlock(text) {
+    var matched = MATH_BLOCK_DOLLAR.exec(text);
+    if (matched) {
+      return matched[1];
+    }
+    matched = MATH_BLOCK_SQUARE.exec(text);
+    if (matched) {
+      return matched[1];
+    }
+    matched = MATH_BLOCK_BEGIN.exec(text);
+    if (matched) {
+      return matched[1]; // \begin…\end 连同环境名一起是公式内容
+    }
+    return null;
+  }
+
+  /* 前面有几个连续的反斜杠。奇数说明当前这个符号被转义了（\$、\\(）。 */
+  function escapedAt(src, pos) {
+    var count = 0;
+    for (var i = pos - 1; i >= 0 && src.charCodeAt(i) === 0x5C; i--) {
+      count++;
+    }
+    return count % 2 === 1;
+  }
+
+  function isSpaceCode(code) {
+    return code === 0x20 || code === 0x09 || code === 0x0A;
+  }
+
+  function mathInlineRule(state, silent) {
+    var src = state.src;
+    var max = state.posMax;
+    var start = state.pos;
+    var code = src.charCodeAt(start);
+    var content;
+    var end;
+
+    if (code === 0x24 /* $ */) {
+      if (src.charCodeAt(start + 1) === 0x24 || escapedAt(src, start) ||
+          start + 1 >= max || isSpaceCode(src.charCodeAt(start + 1))) {
+        return false; // $$ 交给块级规则；\$ 交给转义规则；开符后不能是空白
+      }
+      var i = start + 1;
+      for (; i < max; i++) {
+        var ch = src.charCodeAt(i);
+        if (ch === 0x5C) {
+          i++; // 跳过被转义的下一个字符（含 \$）
+          continue;
+        }
+        if (ch === 0x24) {
+          break;
+        }
+      }
+      if (i >= max || i === start + 1 || isSpaceCode(src.charCodeAt(i - 1))) {
+        return false; // 没有闭符、内容为空、闭符前是空白
+      }
+      content = src.slice(start + 1, i);
+      end = i + 1;
+    } else if (code === 0x5C /* \ */) {
+      if (src.charCodeAt(start + 1) !== 0x28 /* ( */ || escapedAt(src, start)) {
+        return false; // \( … \)
+      }
+      var j = start + 2;
+      for (; j < max - 1; j++) {
+        if (src.charCodeAt(j) === 0x5C) {
+          if (src.charCodeAt(j + 1) === 0x29 /* ) */) {
+            break;
+          }
+          j++; // 跳过 \x，避免把 \) 里的反斜杠当成转义
+          continue;
+        }
+      }
+      if (j >= max - 1 || j === start + 2) {
+        return false;
+      }
+      content = src.slice(start + 2, j);
+      end = j + 2;
+    } else {
+      return false;
+    }
+
+    if (!silent) {
+      var token = state.push('math_inline', 'span', 0);
+      token.content = content;
+      token.markup = code === 0x24 ? '$' : '\\(';
+    }
+    state.pos = end;
+    return true;
+  }
+
+  function mathBlockRule(state, startLine, endLine, silent) {
+    // 缩进四格是代码块；顶层多缩进一两格时服务端也不认，原样当段落
+    var indent = state.sCount[startLine] - state.blkIndent;
+    if (indent >= 4 || (state.blkIndent === 0 && indent > 0)) {
+      return false;
+    }
+    // 服务端按「空行分隔的整段」匹配，这里也先找到这一段在哪里结束
+    var last = startLine;
+    while (last < endLine && !state.isEmpty(last)) {
+      last++;
+    }
+
+    // 逐行取内容，而不是从首行到末行整段切片：引用块的行首 `>` 已经在 bMarks 里
+    // 跳过了，列表项则靠 tShift 缩进；两种容器都要按它们自己的缩进取原文，
+    // 公式里额外的缩进（\begin{align} 的对齐）才能保留下来。
+    var lines = [];
+    var base = Infinity;
+    var i;
+    for (i = startLine; i < last; i++) {
+      base = Math.min(base, state.tShift[i]);
+    }
+    for (i = startLine; i < last; i++) {
+      lines.push(state.src.slice(state.bMarks[i] + base, state.eMarks[i]));
+    }
+    var text = lines.join('\n');
+
+    var content = matchMathBlock(text);
+    if (content == null) {
+      return false;
+    }
+    if (silent) {
+      return true;
+    }
+
+    var token = state.push('math_block', 'div', 0);
+    token.block = true;
+    token.map = [startLine, last];
+    token.attrSet('class', 'arithmatex');
+    token.content = content;
+    state.line = last;
+    return true;
+  }
+
+  function mathPlugin(md) {
+    md.inline.ruler.before('escape', 'math_inline', mathInlineRule);
+    // 不带 alt：公式不能截断段落，与 Python-Markdown 的块首匹配一致
+    md.block.ruler.before('fence', 'math_block', mathBlockRule);
+
+    md.renderer.rules.math_inline = function (tokens, idx) {
+      return '<span class="arithmatex">\\(' +
+        md.utils.escapeHtml(tokens[idx].content) + '\\)</span>';
+    };
+    md.renderer.rules.math_block = function (tokens, idx) {
+      // 属性里有 sourceLinePlugin 写的 data-line / data-line-end
+      return '<div' + md.renderer.renderAttrs(tokens[idx]) + '>\\[' +
+        md.utils.escapeHtml(tokens[idx].content) + '\\]</div>\n';
     };
   }
 
@@ -513,6 +683,7 @@
       md.use(global.markdownitAbbr);
     }
 
+    md.use(mathPlugin);
     md.use(headingIdsPlugin);
     md.use(admonitionPlugin);
     md.use(blockAttrListPlugin);

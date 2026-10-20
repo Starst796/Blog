@@ -1,12 +1,16 @@
-{# 本地 Markdown 渲染的依赖。只在带编辑器的页面加载：这堆库加起来约 300 KB，
-   看板、登录、站点信息这些页面用不上。
+{# 本地 Markdown 渲染的依赖。只在带编辑器的页面加载：这堆库加起来约 600 KB，
+   看板、登录、站点信息这些页面用不上。公式样式（katex.min.css）由表单页的 head 引入。
+
    顺序不能动 —— markdown-local.js 依赖前面这些库挂到 window 上的全局变量
    （markdownit / markdownItAttrs / markdownitFootnote / markdownitDeflist /
-   markdownitAbbr / hljs）。 #}
+   markdownitAbbr / hljs），math.js 依赖 KaTeX 的 renderMathInElement。 #}
 <script src="{{ url_for('static', filename='js/vendor/markdown-it.min.js', v=asset_version) }}" defer></script>
 <script src="{{ url_for('static', filename='js/vendor/markdown-it-attrs.js', v=asset_version) }}" defer></script>
 <script src="{{ url_for('static', filename='js/vendor/markdown-it-footnote.min.js', v=asset_version) }}" defer></script>
 <script src="{{ url_for('static', filename='js/vendor/markdown-it-deflist.min.js', v=asset_version) }}" defer></script>
 <script src="{{ url_for('static', filename='js/vendor/markdown-it-abbr.min.js', v=asset_version) }}" defer></script>
 <script src="{{ url_for('static', filename='js/vendor/highlight.min.js', v=asset_version) }}" defer></script>
+<script src="{{ url_for('static', filename='js/vendor/katex/katex.min.js', v=asset_version) }}" defer></script>
+<script src="{{ url_for('static', filename='js/vendor/katex/auto-render.min.js', v=asset_version) }}" defer></script>
+<script src="{{ url_for('static', filename='js/math.js', v=asset_version) }}" defer></script>
 <script src="{{ url_for('static', filename='js/markdown-local.js', v=asset_version) }}" defer></script>
