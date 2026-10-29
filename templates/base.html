@@ -42,7 +42,7 @@
              title="{% if preview_scope == 'all' %}正在以管理员模式预览：显示草稿与敏感内容{% else %}正在以访客模式预览：显示草稿，不含敏感内容{% endif %}">
           <span class="preview-dot" aria-hidden="true"></span>
           <span class="preview-label">预览</span>
-          <span class="preview-scope">{% if preview_scope == 'all' %}含敏感{% else %}草稿{% endif %}</span>
+          <span class="preview-scope">{% if preview_scope == 'all' %}管理员{% else %}访客{% endif %}</span>
           {% if preview_scope == 'all' and session_csrf %}
             <form class="inline-form" method="post"
                   action="{{ url_for('admin.toggle_preview_mode') }}">
