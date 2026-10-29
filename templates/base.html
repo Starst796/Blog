@@ -29,38 +29,34 @@
 <body>
   <a class="skip-link" href="#main">跳到主要内容</a>
 
-  {% if preview_scope != 'none' and not request.path.startswith('/admin') %}
-    <div class="preview-bar" role="status">
-      <span class="preview-dot" aria-hidden="true"></span>
-      <strong>预览模式</strong>
-      <span class="preview-text">
-        {%- if preview_scope == 'all' -%}
-          正在以管理员模式预览显示草稿与敏感内容。
-        {%- else -%}
-          正在以访客模式显示草稿。
-        {%- endif -%}
-      </span>
-      {% if preview_scope == 'all' and session_csrf %}
-        <form class="inline-form" method="post"
-              action="{{ url_for('admin.toggle_preview_mode') }}">
-          <input type="hidden" name="csrf_token" value="{{ session_csrf }}">
-          <button class="preview-exit" type="submit">退出预览</button>
-        </form>
-      {% elif preview_scope == 'draft' %}
-        <form class="inline-form" method="post"
-              action="{{ url_for('preview.exit_preview') }}">
-          <button class="preview-exit" type="submit">退出预览</button>
-        </form>
-      {% endif %}
-    </div>
-  {% endif %}
-
   <header class="site-header">
     <div class="container header-inner">
       <a class="brand" href="{{ url_for('index') }}">
         <span class="brand-mark" aria-hidden="true">{{ site.name[:1] }}</span>
         <span class="brand-name">{{ site.name }}</span>
       </a>
+
+      {# 预览指示灯嵌在页头里，不再单独占一条横幅，省下的高度留给正文 #}
+      {% if preview_scope != 'none' and not request.path.startswith('/admin') %}
+        <div class="preview-chip" role="status"
+             title="{% if preview_scope == 'all' %}正在以管理员模式预览：显示草稿与敏感内容{% else %}正在以访客模式预览：显示草稿，不含敏感内容{% endif %}">
+          <span class="preview-dot" aria-hidden="true"></span>
+          <span class="preview-label">预览</span>
+          <span class="preview-scope">{% if preview_scope == 'all' %}含敏感{% else %}草稿{% endif %}</span>
+          {% if preview_scope == 'all' and session_csrf %}
+            <form class="inline-form" method="post"
+                  action="{{ url_for('admin.toggle_preview_mode') }}">
+              <input type="hidden" name="csrf_token" value="{{ session_csrf }}">
+              <button class="preview-exit" type="submit">退出</button>
+            </form>
+          {% elif preview_scope == 'draft' %}
+            <form class="inline-form" method="post"
+                  action="{{ url_for('preview.exit_preview') }}">
+              <button class="preview-exit" type="submit">退出</button>
+            </form>
+          {% endif %}
+        </div>
+      {% endif %}
 
       <nav class="site-nav" aria-label="主导航">
         {% for item in site.nav %}

@@ -140,65 +140,64 @@ h1, h2, h3, h4 {
   left: 0;
 }
 
-/* 预览模式横幅：始终可见，避免把预览效果误当成线上真实效果 */
-.preview-bar {
-  position: sticky;
-  top: 0;
-  z-index: 60;
-  display: flex;
+/* 预览指示灯：嵌在页头里，始终可见，避免把预览效果误当成线上真实效果 */
+.preview-chip {
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  min-height: 40px;
-  padding: 6px 24px;
-  border-bottom: 1px solid rgba(250, 168, 26, 0.45);
-  background: linear-gradient(90deg, rgba(250, 168, 26, 0.20), rgba(250, 168, 26, 0.08));
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  flex: none;
+  gap: 7px;
+  padding: 3px 4px 3px 10px;
+  border: 1px solid rgba(250, 168, 26, 0.42);
+  border-radius: 999px;
+  background: rgba(250, 168, 26, 0.13);
   color: #faa81a;
-  font-size: 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
 }
 
-.preview-bar strong {
+.preview-label {
   font-weight: 650;
 }
 
-.preview-text {
-  overflow: hidden;
+.preview-scope {
   color: var(--fg-muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 500;
 }
 
 .preview-dot {
   flex: none;
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: #faa81a;
-  box-shadow: 0 0 0 4px rgba(250, 168, 26, 0.18);
+  box-shadow: 0 0 0 3px rgba(250, 168, 26, 0.16);
 }
 
 .preview-exit {
   flex: none;
-  margin-left: auto;
-  padding: 3px 11px;
-  border: 1px solid rgba(250, 168, 26, 0.5);
+  padding: 3px 8px;
+  border: none;
   border-radius: 999px;
   background: transparent;
-  color: #faa81a;
+  color: inherit;
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 0.74rem;
   cursor: pointer;
   transition: background-color 0.16s ease;
 }
 
 .preview-exit:hover {
-  background: rgba(250, 168, 26, 0.16);
+  background: rgba(250, 168, 26, 0.2);
 }
 
-/* 预览横幅吸顶时把吸顶导航下推，避免两者重叠 */
-body:has(.preview-bar) .site-header {
-  top: 40px;
+/* 退出按钮与档位文字之间加一道细分隔线，避免看成两个并列标签 */
+.preview-chip .inline-form {
+  display: inline-flex;
+  margin-left: 1px;
+  padding-left: 5px;
+  border-left: 1px solid rgba(250, 168, 26, 0.35);
 }
 
 .is-hidden {
@@ -2616,7 +2615,8 @@ input[type="checkbox"] {
 }
 
 @media (max-width: 600px) {
-  .preview-text {
+  /* 小屏只留「预览」与退出，档位说明靠 title 提示，避免挤压导航 */
+  .preview-scope {
     display: none;
   }
 
