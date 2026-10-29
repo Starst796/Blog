@@ -154,7 +154,8 @@ def _inject_admin_globals():
         "admin_username": current_app.config["ADMIN_USERNAME"],
         "password_configured": bool(current_app.config["ADMIN_PASSWORD_HASH"]),
         "preview_mode": admin_preview_enabled(),
-        # 供文章表单的「文集」输入框做候选项，方便复用已有文集名
+        # 供文章表单的「分类」「文集」输入框做候选项，方便复用已有名字
+        "category_options": [name for name, _ in content.list_categories(include_drafts=True)],
         "collection_options": [name for name, _ in content.list_collections(include_drafts=True)],
     }
 
@@ -334,6 +335,11 @@ def _read_article_form(default_time: dt_time) -> tuple[dict, str, list[str]]:
     collection = (form.get("collection") or "").strip()
     if collection and collection != content.DEFAULT_COLLECTION:
         metadata["collection"] = collection
+
+    # 分类同理：留空即「未归档」，默认值不写进 front matter
+    category = (form.get("category") or "").strip()
+    if category and category != content.DEFAULT_CATEGORY:
+        metadata["category"] = category
 
     summary = (form.get("summary") or "").strip()
     if summary:

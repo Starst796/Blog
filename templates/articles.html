@@ -2,27 +2,29 @@
 {% import "_macros.html" as m %}
 
 {% block title %}
-  {%- if active_collection %}{{ active_collection }}{% else %}文章{% endif %}
+  {%- if active_category %}{{ active_category }}{% else %}文章{% endif %}
+  {%- if active_collection %} · {{ active_collection }}{% endif %}
   {%- if active_tag %} · #{{ active_tag }}{% endif %}
   {%- if query %} · 搜索「{{ query }}」{% endif %} · {{ site.name }}
 {% endblock %}
-{% block description %}共 {{ total }} 篇文章{% if active_collection %}，文集「{{ active_collection }}」{% endif %}{% if active_tag %}，标签「{{ active_tag }}」{% endif %}{% if query %}，搜索「{{ query }}」{% endif %}。{% endblock %}
+{% block description %}共 {{ total }} 篇文章{% if active_category %}，分类「{{ active_category }}」{% endif %}{% if active_collection %}，文集「{{ active_collection }}」{% endif %}{% if active_tag %}，标签「{{ active_tag }}」{% endif %}{% if query %}，搜索「{{ query }}」{% endif %}。{% endblock %}
 
 {% block content %}
   <div class="container page">
     <header class="page-head">
       <h1 class="page-title">
-        {% if active_collection %}{{ active_collection }}{% else %}文章{% endif %}
+        {% if active_collection %}{{ active_collection }}{% elif active_category %}{{ active_category }}{% else %}文章{% endif %}
       </h1>
       <p class="page-sub">
         {% if query %}搜索「{{ query }}」找到 {{ total }} 篇{% else %}共 {{ total }} 篇{% endif %}
-        {%- if active_tag %} · 标签 #{{ active_tag }} · <a href="{{ url_for('articles', collection=active_collection, q=query) }}">清除标签</a>{% endif %}
-        {%- if query %} · <a href="{{ url_for('articles', collection=active_collection, tag=active_tag) }}">清除搜索</a>{% endif %}
-        {%- if active_collection or active_tag %} · <a href="{{ url_for('articles', q=query) }}">查看全部</a>{% endif %}
+        {%- if active_tag %} · 标签 #{{ active_tag }} · <a href="{{ url_for('articles', category=active_category, collection=active_collection, q=query) }}">清除标签</a>{% endif %}
+        {%- if query %} · <a href="{{ url_for('articles', category=active_category, collection=active_collection, tag=active_tag) }}">清除搜索</a>{% endif %}
+        {%- if active_category or active_collection or active_tag %} · <a href="{{ url_for('articles', q=query) }}">查看全部</a>{% endif %}
       </p>
     </header>
 
     <form class="article-search" method="get" action="{{ url_for('articles') }}" role="search">
+      {% if active_category %}<input type="hidden" name="category" value="{{ active_category }}">{% endif %}
       {% if active_collection %}<input type="hidden" name="collection" value="{{ active_collection }}">{% endif %}
       {% if active_tag %}<input type="hidden" name="tag" value="{{ active_tag }}">{% endif %}
       <label class="sr-only" for="article-search-query">搜索文章</label>
@@ -31,26 +33,38 @@
       <button class="button button-primary" type="submit">搜索</button>
     </form>
 
-    {# 第一层分类：文集 #}
-    {% if collections %}
-      <nav class="tag-cloud collection-cloud" aria-label="文集">
-        <a class="tag{% if not active_collection %} is-active{% endif %}"
-           href="{{ url_for('articles', tag=active_tag, q=query) }}">全部文集</a>
-        {% for name, count in collections %}
-          <a class="tag{% if active_collection == name %} is-active{% endif %}"
-             href="{{ url_for('articles', collection=name, tag=active_tag, q=query) }}">{{ name }}<span class="tag-count">{{ count }}</span></a>
+    {# 第一层：分类。始终显示，是进入筛选的唯一入口。 #}
+    {% if categories %}
+      <nav class="tag-cloud category-cloud" aria-label="分类">
+        <a class="tag{% if not active_category %} is-active{% endif %}"
+           href="{{ url_for('articles', q=query) }}">全部</a>
+        {% for name, count in categories %}
+          <a class="tag{% if active_category == name %} is-active{% endif %}"
+             href="{{ url_for('articles', category=name, q=query) }}">{{ name }}<span class="tag-count">{{ count }}</span></a>
         {% endfor %}
       </nav>
     {% endif %}
 
-    {# 第二层分类：标签（随所选文集收窄） #}
-    {% if tags %}
+    {# 第二层：文集。选了分类才展开，且只列出该分类下的文集。 #}
+    {% if active_category and collections %}
+      <nav class="tag-cloud collection-cloud" aria-label="文集">
+        <a class="tag{% if not active_collection %} is-active{% endif %}"
+           href="{{ url_for('articles', category=active_category, q=query) }}">全部文集</a>
+        {% for name, count in collections %}
+          <a class="tag{% if active_collection == name %} is-active{% endif %}"
+             href="{{ url_for('articles', category=active_category, collection=name, q=query) }}">{{ name }}<span class="tag-count">{{ count }}</span></a>
+        {% endfor %}
+      </nav>
+    {% endif %}
+
+    {# 第三层：标签。选了文集才展开，且只列出该文集下的标签。 #}
+    {% if active_collection and tags %}
       <nav class="tag-cloud" aria-label="标签">
         <a class="tag{% if not active_tag %} is-active{% endif %}"
-           href="{{ url_for('articles', collection=active_collection, q=query) }}">全部标签</a>
+           href="{{ url_for('articles', category=active_category, collection=active_collection, q=query) }}">全部标签</a>
         {% for name, count in tags %}
           <a class="tag{% if active_tag == name %} is-active{% endif %}"
-             href="{{ url_for('articles', collection=active_collection, tag=name, q=query) }}">#{{ name }}<span class="tag-count">{{ count }}</span></a>
+             href="{{ url_for('articles', category=active_category, collection=active_collection, tag=name, q=query) }}">#{{ name }}<span class="tag-count">{{ count }}</span></a>
         {% endfor %}
       </nav>
     {% endif %}
@@ -62,7 +76,7 @@
         {{ m.article_row(article, true, not active_collection, query) }}
         {% endfor %}
       </div>
-      {{ m.pagination(page, total_pages, 'articles', active_tag, active_collection, query) }}
+      {{ m.pagination(page, total_pages, 'articles', active_tag, active_collection, query, active_category) }}
     {% else %}
       {{ m.empty_state('没有找到匹配的文章。' if query else '这里还没有内容。') }}
     {% endif %}

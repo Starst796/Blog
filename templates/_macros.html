@@ -70,11 +70,11 @@
 {% endmacro %}
 
 
-{% macro pagination(page, total_pages, endpoint, tag=None, collection=None, query=None) %}
+{% macro pagination(page, total_pages, endpoint, tag=None, collection=None, query=None, category=None) %}
   {% if total_pages > 1 %}
     <nav class="pagination" aria-label="分页">
       {% if page > 1 %}
-        <a class="page-link" href="{{ url_for(endpoint, page=page - 1, tag=tag, collection=collection, q=query) }}">← 较新</a>
+        <a class="page-link" href="{{ url_for(endpoint, page=page - 1, category=category, tag=tag, collection=collection, q=query) }}">← 较新</a>
       {% else %}
         <span class="page-link is-disabled">← 较新</span>
       {% endif %}
@@ -82,7 +82,7 @@
       <span class="page-status">第 {{ page }} / {{ total_pages }} 页</span>
 
       {% if page < total_pages %}
-        <a class="page-link" href="{{ url_for(endpoint, page=page + 1, tag=tag, collection=collection, q=query) }}">较旧 →</a>
+        <a class="page-link" href="{{ url_for(endpoint, page=page + 1, category=category, tag=tag, collection=collection, q=query) }}">较旧 →</a>
       {% else %}
         <span class="page-link is-disabled">较旧 →</span>
       {% endif %}

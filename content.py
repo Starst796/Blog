@@ -48,6 +48,14 @@ MEDIA_URL_PREFIX = "/uploads"
 # 文章「文集」的默认值：front matter 未写 collection 的文章都归入这里
 DEFAULT_COLLECTION = "未归档"
 
+# 文章「分类」的默认值：front matter 未写 category 的文章都归入这里。
+# 分类是列表页的第一层（课程笔记 / 生活随笔 / 未归档），文集是第二层，
+# 标签是第三层；分类与文集各自独立，一个课程笔记也可以没有文集。
+DEFAULT_CATEGORY = "未归档"
+
+# 分类的展示顺序：先按这里列出的顺序，其余按篇数倒序，默认分类永远最后。
+CATEGORY_ORDER = ("课程笔记", "生活随笔")
+
 # ---------------------------------------------------------------- 内部状态
 
 _root: Path | None = None
@@ -239,6 +247,12 @@ def _parse_collection(value: Any) -> str:
     return name or DEFAULT_COLLECTION
 
 
+def _parse_category(value: Any) -> str:
+    """解析文章分类，缺省（或留空）时归入「未归档」。"""
+    name = str(value or "").strip()
+    return name or DEFAULT_CATEGORY
+
+
 def _estimate_words(text: str) -> int:
     """输出字符数量"""
     return len(text or "")
@@ -285,6 +299,9 @@ class Article:
     time: time
     updated: date | None
     summary: str
+    # 第一层筛选：课程笔记 / 生活随笔 / 未归档
+    category: str
+    # 第二层筛选：文集（各门课程、星语、尘言……）
     collection: str
     tags: list[str]
     draft: bool
@@ -417,6 +434,8 @@ def _load_articles(root: Path) -> dict[str, Article]:
             time=created_time,
             updated=_parse_date(updated_raw) if updated_raw else None,
             summary=_derive_summary(meta, body),
+            # 分类与文集互相独立：课程笔记里也可能有没有文集的单篇（如讲座纪要）
+            category=_parse_category(meta.get("category")),
             # 兼容 ``series:`` 这个常见写法，二者等价
             collection=_parse_collection(meta.get("collection") or meta.get("series")),
             tags=_parse_str_list(meta.get("tags")),
@@ -592,15 +611,17 @@ def list_articles(
     *,
     include_drafts: bool = False,
     include_sensitive: bool | None = None,
+    category: str | None = None,
     tag: str | None = None,
     collection: str | None = None,
     query: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> list[Article]:
-    """按发布时间（date + time）倒序返回文章列表，可按文集、标签与关键词筛选。
+    """按发布时间（date + time）倒序返回文章列表，可按分类、文集、标签与关键词筛选。
 
-    同一时刻的两篇再按 slug 倒序，顺序稳定且可复现。
+    三层筛选可以任意组合；同时给出时取交集。同一时刻的两篇再按 slug 倒序，
+    顺序稳定且可复现。
     """
     include_sensitive = _resolve_sensitive(include_drafts, include_sensitive)
     articles = [
@@ -608,6 +629,9 @@ def list_articles(
         for item in _store()["articles"].values()
         if _visible(item, include_drafts, include_sensitive)
     ]
+    if category:
+        wanted_category = category.strip().lower()
+        articles = [item for item in articles if item.category.lower() == wanted_category]
     if collection:
         wanted = collection.strip().lower()
         articles = [item for item in articles if item.collection.lower() == wanted]
@@ -620,7 +644,15 @@ def list_articles(
             for item in articles
             if needle
             in " ".join(
-                (item.slug, item.title, item.summary, item.collection, item.body, *item.tags)
+                (
+                    item.slug,
+                    item.title,
+                    item.summary,
+                    item.category,
+                    item.collection,
+                    item.body,
+                    *item.tags,
+                )
             ).casefold()
         ]
 
@@ -637,6 +669,7 @@ def count_articles(
     *,
     include_drafts: bool = False,
     include_sensitive: bool | None = None,
+    category: str | None = None,
     tag: str | None = None,
     collection: str | None = None,
     query: str | None = None,
@@ -645,6 +678,7 @@ def count_articles(
         list_articles(
             include_drafts=include_drafts,
             include_sensitive=include_sensitive,
+            category=category,
             tag=tag,
             collection=collection,
             query=query,
@@ -672,13 +706,16 @@ def list_tags(
     *,
     include_drafts: bool = False,
     include_sensitive: bool | None = None,
+    category: str | None = None,
     collection: str | None = None,
 ) -> list[tuple[str, int]]:
-    """返回 ``[(标签, 篇数)]``，按篇数倒序。可限定在某个文集内统计。"""
+    """返回 ``[(标签, 篇数)]``，按篇数倒序。可限定在某个分类/文集内统计。"""
     show_sensitive = _resolve_sensitive(include_drafts, include_sensitive)
     counter: dict[str, int] = {}
     for article in _store()["articles"].values():
         if not _visible(article, include_drafts, show_sensitive):
+            continue
+        if category and article.category.lower() != category.strip().lower():
             continue
         if collection and article.collection.lower() != collection.strip().lower():
             continue
@@ -687,14 +724,51 @@ def list_tags(
     return sorted(counter.items(), key=lambda pair: (-pair[1], pair[0]))
 
 
-def list_collections(
+def list_categories(
     *, include_drafts: bool = False, include_sensitive: bool | None = None
 ) -> list[tuple[str, int]]:
-    """返回 ``[(文集, 篇数)]``，按篇数倒序；「未归档」始终排在最后。"""
+    """返回 ``[(分类, 篇数)]``，用于文章页的第一层筛选。
+
+    顺序：``CATEGORY_ORDER`` 里列出的先按该顺序，其余按篇数倒序，
+    「未归档」始终排在最后。
+    """
     show_sensitive = _resolve_sensitive(include_drafts, include_sensitive)
     counter: dict[str, int] = {}
     for article in _store()["articles"].values():
         if not _visible(article, include_drafts, show_sensitive):
+            continue
+        counter[article.category] = counter.get(article.category, 0) + 1
+
+    preferred = {name: index for index, name in enumerate(CATEGORY_ORDER)}
+
+    def order_key(pair: tuple[str, int]) -> tuple[int, int, int, str]:
+        name, count = pair
+        return (
+            name == DEFAULT_CATEGORY,
+            preferred.get(name, len(preferred)),
+            -count,
+            name,
+        )
+
+    return sorted(counter.items(), key=order_key)
+
+
+def list_collections(
+    *,
+    include_drafts: bool = False,
+    include_sensitive: bool | None = None,
+    category: str | None = None,
+) -> list[tuple[str, int]]:
+    """返回 ``[(文集, 篇数)]``，按篇数倒序；「未归档」始终排在最后。
+
+    传 ``category`` 时只统计该分类下的文集（列表页第二层跟着第一层收窄）。
+    """
+    show_sensitive = _resolve_sensitive(include_drafts, include_sensitive)
+    counter: dict[str, int] = {}
+    for article in _store()["articles"].values():
+        if not _visible(article, include_drafts, show_sensitive):
+            continue
+        if category and article.category.lower() != category.strip().lower():
             continue
         counter[article.collection] = counter.get(article.collection, 0) + 1
     return sorted(

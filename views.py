@@ -98,6 +98,7 @@ def project_detail(slug: str):
 @bp.get("/articles")
 def articles():
     per_page = current_app.config["PAGE_SIZE"]
+    category = (request.args.get("category") or "").strip() or None
     tag = (request.args.get("tag") or "").strip() or None
     collection = (request.args.get("collection") or "").strip() or None
     query = (request.args.get("q") or "").strip() or None
@@ -105,6 +106,7 @@ def articles():
     total = content.count_articles(
         include_drafts=include_drafts,
         include_sensitive=include_sensitive,
+        category=category,
         tag=tag,
         collection=collection,
         query=query,
@@ -115,6 +117,7 @@ def articles():
     items = content.list_articles(
         include_drafts=include_drafts,
         include_sensitive=include_sensitive,
+        category=category,
         tag=tag,
         collection=collection,
         query=query,
@@ -122,17 +125,37 @@ def articles():
         offset=(page - 1) * per_page,
     )
 
+    # 三层筛选逐级展开：没选分类就不出文集，没选文集就不出标签。
+    # 这样页面上永远只有「当前能选的那一层」，不会一上来铺满上百个标签。
+    collections = (
+        content.list_collections(
+            include_drafts=include_drafts,
+            include_sensitive=include_sensitive,
+            category=category,
+        )
+        if category
+        else []
+    )
+    tags = (
+        content.list_tags(
+            include_drafts=include_drafts,
+            include_sensitive=include_sensitive,
+            category=category,
+            collection=collection,
+        )
+        if collection
+        else []
+    )
+
     return render_template(
         "articles.html",
         articles=items,
-        collections=content.list_collections(
+        categories=content.list_categories(
             include_drafts=include_drafts, include_sensitive=include_sensitive
         ),
-        tags=content.list_tags(
-            include_drafts=include_drafts,
-            include_sensitive=include_sensitive,
-            collection=collection,
-        ),
+        collections=collections,
+        tags=tags,
+        active_category=category,
         active_collection=collection,
         active_tag=tag,
         query=query,
