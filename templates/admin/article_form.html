@@ -27,11 +27,29 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div class="form-grid">
-      <label class="field field-wide">
+      <label class="field field">
         <span class="field-label">标题</span>
         <input class="input" type="text" name="title" required
                value="{{ form.get('title') if 'title' in form else (article.title if article else '') }}">
       </label>
+
+      <div class="field">
+        <label class="field-label" for="article-cover">封面图</label>
+        <div class="field-row">
+          <input class="input" type="text" id="article-cover" name="cover" data-path-input
+                 placeholder="/uploads/2026/09/cover.png"
+                 value="{{ form.get('cover') if 'cover' in form else (article.cover or '' if article else '') }}">
+          <label class="button button-small button-ghost upload-button">
+            上传
+            <input type="file" hidden data-upload-path
+                   accept="image/png,image/jpeg,image/gif,image/webp,image/avif">
+          </label>
+          <img class="field-preview" data-path-preview alt=""
+               src="{{ article.cover or '' if article else '' }}"
+               {%- if not (article and article.cover) %} hidden{% endif %}>
+        </div>
+        <span class="field-hint" data-upload-status></span>
+      </div>
 
       <label class="field">
         <span class="field-label">slug <span class="field-hint">小写字母、数字、连字符</span></span>
@@ -69,9 +87,6 @@
         <input class="input" type="text" name="category" list="category-options"
                placeholder="未归档"
                value="{{ form.get('category') if 'category' in form else (article.category if article and article.category != '未归档' else '') }}">
-        <span class="field-hint">
-          文章列表页的第一层筛选（课程笔记 / 生活随笔 / 未归档），第二层才是文集。
-        </span>
         <datalist id="category-options">
           {% for name in category_options %}<option value="{{ name }}"></option>{% endfor %}
         </datalist>
@@ -82,31 +97,10 @@
         <input class="input" type="text" name="collection" list="collection-options"
                placeholder="未归档"
                value="{{ form.get('collection') if 'collection' in form else (article.collection if article else '') }}">
-        <span class="field-hint">
-          同一文集的文章在列表页归为一组，详情页的「更早 / 更新」也只在本文集内跳转。
-        </span>
         <datalist id="collection-options">
           {% for name in collection_options %}<option value="{{ name }}"></option>{% endfor %}
         </datalist>
       </label>
-
-      <div class="field">
-        <label class="field-label" for="article-cover">封面图</label>
-        <div class="field-row">
-          <input class="input" type="text" id="article-cover" name="cover" data-path-input
-                 placeholder="/uploads/2026/09/cover.png"
-                 value="{{ form.get('cover') if 'cover' in form else (article.cover or '' if article else '') }}">
-          <label class="button button-small button-ghost upload-button">
-            上传
-            <input type="file" hidden data-upload-path
-                   accept="image/png,image/jpeg,image/gif,image/webp,image/avif">
-          </label>
-          <img class="field-preview" data-path-preview alt=""
-               src="{{ article.cover or '' if article else '' }}"
-               {%- if not (article and article.cover) %} hidden{% endif %}>
-        </div>
-        <span class="field-hint" data-upload-status></span>
-      </div>
 
       <label class="field field-inline field-wide">
         <input type="checkbox" name="draft" value="on"{% if draft_checked %} checked{% endif %}>
